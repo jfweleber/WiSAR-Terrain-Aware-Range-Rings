@@ -95,12 +95,12 @@ Calibration multipliers are applied on the frontend before percentile distances 
 
 ## References
 
-- Danser, R.A. (2018). *Applying Least Cost Path Analysis to SAR Data.* USC Thesis.
-- Doherty, P.J., Guo, Q., Doke, J., & Ferguson, D. (2014). Applied Geography, 47, 99-110.
-- Ferguson, D. (2013). IGT4SAR. GitHub.
-- Imhof, E. (1950). *Gelände und Karte.* Eugen Rentsch Verlag.
-- Koester, R.J. (2008). *Lost Person Behavior.* dbS Productions.
-- Tobler, W. (1993). Technical Report 93-1, NCGIA.
+- Danser, R.A., 2018. Applying least cost path analysis to search and rescue data [thesis]. University of Southern California.
+- Doherty, P.J., Guo, Q., Doke, J., and Ferguson, D., 2014. An analysis of probability of area techniques for missing persons in Yosemite National Park. Applied Geography, 47, 99-110. doi:10.1016/j.apgeog.2013.11.001
+- Ferguson, D., 2014. Integrated Geospatial Tools for Search and Rescue (IGT4SAR) [online]. GitHub. Available from: https://github.com/dferguso/IGT4SAR
+- Imhof, E., 1950. Gelände und Karte. Erlenbach-Zürich: Eugen Rentsch Verlag.
+- Koester, R.J., 2008. Lost person behavior: a search and rescue guide on where to look -- for land, air and water. Charlottesville, VA: dbS Productions.
+- Tobler, W.R., 1993. Non-isotropic geographic modeling. In: W.R. Tobler, ed. Three presentations on geographical analysis and modeling. Technical Report 93-1. Santa Barbara, CA: National Center for Geographic Information and Analysis.
 
 ## Author
 
