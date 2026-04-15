@@ -29,7 +29,6 @@ Given an IPP (the point where a lost person was last seen) and a subject profile
 - **Probability density visualization** with percentile-band color ramp and travel corridor highlighting
 - **KML and GeoJSON export** of TARR contours for CalTopo, Google Earth, TAK/CloudTAK, QGIS, and Avenza
 - **GeoTIFF downloads** of cost-distance, cost surface, and probability rasters
-- **Download caching** — DEM, NLCD, OSM, and NHD data cached by bounding box to avoid redundant API calls
 - **Overpass API fallback** — five mirror endpoints tried in sequence for reliable OSM data retrieval
 
 ## Calibration
