@@ -5,7 +5,7 @@
 #               networks and power line corridors (OpenStreetMap), and hydrology
 #               (NHD) data for the analysis bounding box.
 # Author:       Jamie F. Weleber
-# Created:      March 2026
+# Created:      March 2026 - v1.14 (no change)
 # ===============================================================================
 
 import numpy as np              # Array math for raster operations
