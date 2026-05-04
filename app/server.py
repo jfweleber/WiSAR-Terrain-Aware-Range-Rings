@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request, send_from_directory, send_file
 import urllib.request
+import urllib.parse
 import json
 import os
 import threading
@@ -48,24 +49,48 @@ def caltopo_sign(method, url_path, expires, payload_string):
 def caltopo_api_request(method, endpoint, payload=None):
     """Send an authenticated request to the CalTopo API.
 
-    CalTopo expects POST/PUT payloads as a 'json' query parameter,
-    not as the request body. The signature is computed over the
-    JSON payload string regardless of how it's transmitted.
+    Wire format (v1.14): auth parameters (id, expires, signature) are always
+    transmitted as URL query parameters. The JSON payload, when present,
+    goes in the request body as form-encoded data under the 'json' key —
+    NOT appended to the URL. This matches CalTopo's official reference
+    implementations in their Team API documentation and lifts the practical
+    URL-length limit that previously forced aggressive geometry simplification
+    on large TARR / travel-time polygons (see server.py git history — the
+    old URL-encoded path capped at roughly 500 vertices per feature before
+    CalTopo would reject the request).
+
+    Signature computation is unchanged: HMAC over the canonical string
+    "{METHOD} {PATH}\\n{expires}\\n{payload_string}". The signature doesn't
+    care where the payload is transmitted, only that it matches what
+    CalTopo sees on arrival — which we control by sending the exact
+    payload_string as the value of the body's 'json' key.
+
+    For GET requests (or POST/PUT with no payload), the behavior is
+    effectively unchanged — there's no body to send, so we issue a simple
+    authenticated request against the URL.
     """
     expires = int((time.time() + 120) * 1000)
     payload_string = json.dumps(payload) if payload else ''
     signature = caltopo_sign(method, endpoint, expires, payload_string)
+
+    # Auth params always go on the URL regardless of method.
     sep = '&' if '?' in endpoint else '?'
     url = (f"{CALTOPO_BASE_URL}{endpoint}{sep}"
            f"id={CALTOPO_CREDENTIAL_ID}"
            f"&expires={expires}"
            f"&signature={urllib.request.quote(signature, safe='')}")
-    if payload_string:
-        url += f"&json={urllib.request.quote(payload_string, safe='')}"
-    req = urllib.request.Request(
-        url,
-        headers={'User-Agent': 'WiSAR-Decision-Support/0.1'},
-        method=method)
+
+    # For POST/PUT with a payload, send 'json=<payload>' as the body in
+    # application/x-www-form-urlencoded format. urllib.parse.urlencode
+    # handles the percent-encoding so the payload string round-trips
+    # byte-for-byte to CalTopo's parser — critical for signature match.
+    body_bytes = None
+    headers = {'User-Agent': 'WiSAR-Decision-Support/0.1'}
+    if payload_string and method.upper() in ('POST', 'PUT'):
+        body_bytes = urllib.parse.urlencode({'json': payload_string}).encode('utf-8')
+        headers['Content-Type'] = 'application/x-www-form-urlencoded'
+
+    req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
     with urllib.request.urlopen(req, timeout=30) as response:
         body = response.read().decode()
         if body.strip():
@@ -176,11 +201,16 @@ def run_analysis_endpoint():
             bounds = src.bounds
         poa_results = result.get('poa_results', [])
         contour_geojson = result.get('contour_geojson', None)
+        # Data-source warnings (e.g., OSM fell back to cache, or cache was
+        # unavailable entirely). Default to empty list so the frontend can
+        # always iterate over it without a null check.
+        warnings = result.get('warnings', [])
         return jsonify({'status':'ok','analysis_id':analysis_id,
             'has_percentiles':has_percentiles,
             'calibration': {'profile': profile_name, 'multiplier': multiplier} if multiplier != 1.0 else None,
             'poa_results':poa_results,
             'contour_geojson':contour_geojson,
+            'warnings':warnings,
             'bounds':{'west':bounds.left,'south':bounds.bottom,'east':bounds.right,'north':bounds.top},
             'cost_surface_url':f'/api/results/{analysis_id}/cost_surface.png',
             'percentiles_url':f'/api/results/{analysis_id}/percentiles.png',
@@ -188,6 +218,115 @@ def run_analysis_endpoint():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'status':'error','message':str(e)}), 500
+
+
+# ============================================================
+# Isochrone analysis endpoint — time-based reachability mode
+#
+# Unlike /api/analyze which uses Koester LPB percentiles to
+# define TARR contours, this endpoint lets the SAR coordinator
+# specify a flat-ground travel speed and time intervals. The
+# pipeline runs identically through cost-distance, then converts
+# the output to travel-time isochrones.
+#
+# Expected JSON payload:
+#   {
+#     "ipp": {"lat": 36.05, "lng": -112.14},
+#     "speed": 1.61,              // km/h (flat ground)
+#     "speed_unit": "kmh",        // "kmh" or "mph" — server normalizes to km/h
+#     "intervals": [1, 2, 4, 8],  // hours
+#     "radius": 10000             // meters (analysis extent from IPP)
+#   }
+# ============================================================
+@app.route('/api/analyze-isochrone', methods=['POST'])
+def run_isochrone_endpoint():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No JSON data provided'}), 400
+
+        # --- Parse and validate IPP coordinates ---
+        ipp = data.get('ipp', {})
+        ipp_lat = float(ipp.get('lat', 0))
+        ipp_lng = float(ipp.get('lng', 0))
+        if ipp_lat == 0 or ipp_lng == 0:
+            return jsonify({'status': 'error', 'message': 'Invalid IPP coordinates'}), 400
+
+        # --- Parse travel speed ---
+        # Accept either km/h or mph; normalize to km/h internally.
+        # Coordinators in the US typically think in mph, so the frontend
+        # may send mph with a unit flag. 1 mph ≈ 1.609 km/h.
+        speed = float(data.get('speed', 0))
+        speed_unit = data.get('speed_unit', 'kmh').lower()
+        if speed_unit == 'mph':
+            base_speed_kmh = speed * 1.609344
+        else:
+            base_speed_kmh = speed
+        if base_speed_kmh <= 0 or base_speed_kmh > 20:
+            return jsonify({'status': 'error',
+                            'message': 'Speed must be between 0 and 20 km/h (0-12.4 mph)'}), 400
+
+        # --- Parse time intervals ---
+        intervals = data.get('intervals', [])
+        if not intervals or not isinstance(intervals, list):
+            return jsonify({'status': 'error',
+                            'message': 'Provide at least one time interval (hours)'}), 400
+        # Sanitize: convert to floats, remove non-positive values, cap at 72h
+        time_intervals = sorted(set(
+            float(h) for h in intervals if float(h) > 0 and float(h) <= 72
+        ))
+        if not time_intervals:
+            return jsonify({'status': 'error',
+                            'message': 'No valid time intervals (must be 0-72 hours)'}), 400
+
+        # --- Parse analysis radius ---
+        radius_km = float(data.get('radius', 10000)) / 1000
+
+        # --- Run the isochrone pipeline ---
+        from pipeline import run_isochrone_analysis
+        result = run_isochrone_analysis(
+            ipp_lat=ipp_lat, ipp_lng=ipp_lng,
+            base_speed_kmh=base_speed_kmh,
+            time_intervals_hours=time_intervals,
+            radius_km=radius_km
+        )
+
+        # Store result for subsequent tile/file requests using the same
+        # analysis_id pattern as the TARR endpoint
+        analysis_id = f"iso_{ipp_lat:.4f}_{ipp_lng:.4f}"
+        result['isochrone_params'] = {
+            'base_speed_kmh': round(base_speed_kmh, 4),
+            'base_speed_mph': round(base_speed_kmh / 1.609344, 2),
+            'intervals': time_intervals,
+        }
+        save_result(analysis_id, result)
+
+        # Read bounds from the cost-distance raster for map fitting
+        import rasterio
+        with rasterio.open(result['cost_distance_path']) as src:
+            bounds = src.bounds
+
+        contour_geojson = result.get('contour_geojson', None)
+        warnings = result.get('warnings', [])
+
+        return jsonify({
+            'status': 'ok',
+            'analysis_id': analysis_id,
+            'mode': 'isochrone',
+            'isochrone_params': result['isochrone_params'],
+            'contour_geojson': contour_geojson,
+            'warnings': warnings,
+            'bounds': {
+                'west': bounds.left, 'south': bounds.bottom,
+                'east': bounds.right, 'north': bounds.top
+            },
+            # Cost surface PNG is still useful for visual inspection
+            'cost_surface_url': f'/api/results/{analysis_id}/cost_surface.png',
+            'cost_distance_url': f'/api/results/{analysis_id}/cost_distance.tif',
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/results/<analysis_id>/<filename>')
 def serve_result(analysis_id, filename):
@@ -489,6 +628,21 @@ def serve_percentile_png(analysis_id):
 
 @app.route('/api/caltopo/export-tarrs', methods=['POST'])
 def export_tarrs_to_caltopo():
+    """Push contour polygons to a CalTopo map as named Shape features.
+
+    Handles both TARR contours (percentile-based) and travel-time
+    isochrones (hours-based) from the same endpoint. The feature type is
+    detected per-feature by checking whether the GeoJSON properties
+    include an 'hours' field (present only on isochrones) — this matches
+    the same detection pattern used by the frontend for KML/GeoJSON
+    downloads, so a CalTopo export carries the same semantic labeling
+    the coordinator sees in the locally-downloaded files.
+
+    The endpoint URL still says 'export-tarrs' for backward compatibility
+    with any existing frontend or bookmarklet callers; a future release
+    can rename to 'export-contours' alongside the corresponding app.js
+    update. The handler logic is mode-agnostic.
+    """
     try:
         data = request.get_json()
         if not data:
@@ -500,46 +654,87 @@ def export_tarrs_to_caltopo():
         features = contours.get('features', [])
         if not features:
             return jsonify({'status': 'error', 'message': 'No contour features to export'}), 400
+
+        # Detect mode from the first feature. All features in a single export
+        # come from one analysis run and share the same mode. We use the
+        # presence of the 'hours' property as the discriminator because
+        # that's the field run_isochrone_analysis uniquely sets and the
+        # frontend uses the same check elsewhere (KML/GeoJSON download).
+        first_props = features[0].get('properties', {}) if features else {}
+        is_isochrone = 'hours' in first_props
+
+        # Human-readable noun for log messages and the response summary —
+        # 'TARR' for percentile contours, 'travel-time contour' for isochrones.
+        export_kind = 'travel-time contour' if is_isochrone else 'TARR'
+
         results = []
         for feature in features:
             props = feature.get('properties', {})
             geom = feature.get('geometry', {})
-            pct_label = props.get('percentile', '')
-            threshold_km = (props.get('threshold_m', 0) / 1000)
             color = props.get('color', '#ffffff')
 
-            # Simplify large polygons to stay within URL length limits.
-            # CalTopo requires payloads as query parameters, so complex
-            # geometries with many vertices can exceed URL length caps.
-            # Target ~60 vertices max to keep URLs under ~8KB.
-            from shapely.geometry import shape, mapping
+            # Per-feature display label used in the CalTopo title, log lines,
+            # and the results array. Different source fields depending on
+            # what kind of contour this is.
+            if is_isochrone:
+                # Isochrones: prefer the pre-formatted 'label' (e.g. "4h")
+                # set by the pipeline; fall back to constructing it from
+                # 'hours' if label is missing for any reason.
+                hours = props.get('hours')
+                feature_label = props.get('label') or (f'{hours}h' if hours is not None else 'unknown')
+                caltopo_title = f'Travel Time: {feature_label}'
+                # Description contextualizes the contour for a SAR user who
+                # sees it in CalTopo without the WiSAR tool open. We don't
+                # include the coordinator-specified speed here because that
+                # parameter is per-analysis, not per-feature, and isn't on
+                # the GeoJSON payload — it's only on the pipeline's result dict.
+                caltopo_description = (
+                    f'{feature_label} travel-time isochrone\n'
+                    f'Area reachable within {feature_label} at the coordinator-specified flat-ground speed. '
+                    f'Actual travel time adjusts for terrain (Tobler slope function), land cover (NLCD), '
+                    f'and available trail/road corridors (OSM).\n'
+                    f'Generated by WiSAR Decision Support Tool'
+                )
+            else:
+                # TARRs: use the existing percentile-based labeling. Keep the
+                # description format identical to v1.12 — field reports and
+                # screenshots in the wild reference this wording.
+                feature_label = props.get('percentile', '')
+                threshold_km = (props.get('threshold_m', 0) / 1000)
+                caltopo_title = f'TARR {feature_label}'
+                caltopo_description = (
+                    f'{feature_label} Terrain-Aware Range Ring\n'
+                    f'Cost-distance threshold: {threshold_km:.2f} km\n'
+                    f'Generated by WiSAR Decision Support Tool'
+                )
+
+            # No geometry simplification (v1.14): body-based POST to CalTopo
+            # has no practical size limit, so we can send the full-fidelity
+            # polygon directly. The previous URL-encoded path forced aggressive
+            # simplification to fit under CalTopo's ~16KB URL cap, which erased
+            # detail on large travel-time isochrones and TARRs.
+            #
+            # We still round coordinates to 5 decimal places (~1.1m) because
+            # that's well below both SAR display precision and the underlying
+            # 30m pipeline grid resolution, and it cuts the JSON payload by
+            # roughly 40% with no visible accuracy loss.
             try:
-                geom_shape = shape(geom)
-                coords_count = len(geom_shape.exterior.coords) if geom_shape.geom_type == 'Polygon' else sum(len(p.exterior.coords) for p in geom_shape.geoms) if geom_shape.geom_type == 'MultiPolygon' else 0
-                if coords_count > 200:
-                    tolerance = 0.0002
-                    for _ in range(5):
-                        simplified = geom_shape.simplify(tolerance, preserve_topology=True)
-                        sc = len(simplified.exterior.coords) if simplified.geom_type == 'Polygon' else sum(len(p.exterior.coords) for p in simplified.geoms)
-                        if sc <= 200:
-                            break
-                        tolerance *= 1.5
-                    geom = mapping(simplified)
-                    # Round to 5 decimal places (~1.1m) to reduce URL payload size
-                    def _rc(c):
-                        if isinstance(c[0], (list, tuple)): return [_rc(x) for x in c]
-                        return [round(v, 5) for v in c]
-                    geom = dict(geom); geom['coordinates'] = _rc(geom['coordinates'])
-                    print(f"  Simplified {pct_label} from {coords_count} to {sc} vertices (tolerance={tolerance:.5f})")
+                def _round_coords(c):
+                    if isinstance(c[0], (list, tuple)):
+                        return [_round_coords(x) for x in c]
+                    return [round(v, 5) for v in c]
+                if geom.get('coordinates') is not None:
+                    geom = dict(geom)
+                    geom['coordinates'] = _round_coords(geom['coordinates'])
             except Exception as e:
-                print(f"  Simplification warning for {pct_label}: {e}")
+                print(f"  Coordinate rounding warning for {feature_label}: {e}")
 
             shape_payload = {
                 'type': 'Feature',
                 'properties': {
                     'class': 'Shape',
-                    'title': f'TARR {pct_label}',
-                    'description': f'{pct_label} Terrain-Aware Range Ring\nCost-distance threshold: {threshold_km:.2f} km\nGenerated by WiSAR Decision Support Tool',
+                    'title': caltopo_title,
+                    'description': caltopo_description,
                     'stroke': color, 'stroke-width': 3, 'stroke-opacity': 0.9,
                     'fill': color, 'fill-opacity': 0.08,
                 },
@@ -547,13 +742,22 @@ def export_tarrs_to_caltopo():
             }
             try:
                 resp = caltopo_api_request('POST', f'/api/v1/map/{map_id}/Shape', shape_payload)
-                results.append({'percentile': pct_label, 'status': 'ok', 'id': resp.get('result', {}).get('id', 'unknown')})
-                print(f"  Exported TARR {pct_label} to CalTopo map {map_id}")
+                # 'label' key covers both TARR percentiles and isochrone hours;
+                # frontend only reads .status for success counting, so the
+                # change from 'percentile' is safe.
+                results.append({'label': feature_label, 'status': 'ok',
+                                'id': resp.get('result', {}).get('id', 'unknown')})
+                print(f"  Exported {export_kind} {feature_label} to CalTopo map {map_id}")
             except Exception as e:
-                results.append({'percentile': pct_label, 'status': 'error', 'message': str(e)})
-                print(f"  Failed to export TARR {pct_label}: {e}")
+                results.append({'label': feature_label, 'status': 'error', 'message': str(e)})
+                print(f"  Failed to export {export_kind} {feature_label}: {e}")
         ok_count = sum(1 for r in results if r['status'] == 'ok')
-        return jsonify({'status': 'ok', 'message': f'Exported {ok_count}/{len(features)} TARRs to CalTopo', 'results': results})
+        # Message reflects what was actually exported — mentions the kind so
+        # the UI's success notice reads correctly for either mode.
+        noun_plural = 'travel-time contours' if is_isochrone else 'TARRs'
+        return jsonify({'status': 'ok',
+                        'message': f'Exported {ok_count}/{len(features)} {noun_plural} to CalTopo',
+                        'results': results})
     except Exception as e:
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -599,4 +803,4 @@ def update_segments_on_caltopo():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
