@@ -16,7 +16,7 @@
      
      Author:  Jamie F. Weleber
      Created: March 2026
-     Version: 1.11
+     Version: 1.13
      ============================================================ -->
 <html lang="en">
 <!-- ============================================================
@@ -49,7 +49,7 @@
         body{font-family:'Source Sans 3',sans-serif;background:var(--bg-primary);color:var(--text-primary);height:100vh;overflow:hidden;display:flex}
         .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .3s ease-out}
         .modal-overlay.hidden{display:none}
-        .modal{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:40px;max-width:520px;width:90%;text-align:center;animation:slideUp .4s ease-out}
+        .modal{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:40px;max-width:700px;width:90%;text-align:center;animation:slideUp .4s ease-out}
         .modal h1{font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:6px}
         .modal .modal-subtitle{font-size:14px;color:var(--text-muted);margin-bottom:32px}
         .modal-options{display:flex;gap:16px}
@@ -111,11 +111,24 @@
         .status-bar.visible{display:flex}
         .status-bar.info{background:var(--accent-glow);border:1px solid rgba(59,130,246,0.3);color:var(--accent)}
         .status-bar.success{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:var(--success)}
+        .status-bar.warning{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:var(--warning)}
         .status-bar.error{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--danger)}
         .status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
         .status-bar.info .status-dot{background:var(--accent)}
         .status-bar.success .status-dot{background:var(--success)}
+        .status-bar.warning .status-dot{background:var(--warning)}
         .status-bar.error .status-dot{background:var(--danger)}
+        /* Data-source warnings shown after an analysis completes (cache fallback, etc.).
+           Separate from the transient status-bar so the user can see both the success
+           message and the underlying data-source note without one overwriting the other. */
+        .data-warnings{margin-top:12px;display:none;flex-direction:column;gap:6px}
+        .data-warnings.visible{display:flex}
+        .data-warning{padding:10px 14px;border-radius:6px;font-size:13px;line-height:1.45;display:flex;gap:8px;align-items:flex-start}
+        .data-warning.info{background:var(--accent-glow);border:1px solid rgba(59,130,246,0.3);color:var(--accent)}
+        .data-warning.warning{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:var(--warning)}
+        .data-warning .dw-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:6px}
+        .data-warning.info .dw-dot{background:var(--accent)}
+        .data-warning.warning .dw-dot{background:var(--warning)}
         .segment-list{margin-top:16px}
         .segment-list-header{font-size:14px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;display:flex;justify-content:space-between}
         .segment-item{padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer;transition:border-color .2s,background .2s}
@@ -135,6 +148,7 @@
         .mode-badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em}
         .mode-badge.ipp-only{background:rgba(245,158,11,0.15);color:var(--warning)}
         .mode-badge.caltopo{background:rgba(59,130,246,0.15);color:var(--accent)}
+        .mode-badge.isochrone{background:rgba(0,188,212,0.15);color:#00bcd4}
         .measure-control{background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;padding:0;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
         .measure-btn{display:flex;align-items:center;gap:6px;padding:7px 12px;color:var(--text-secondary);font-family:'Source Sans 3',sans-serif;font-size:12px;font-weight:600;background:none;border:none;cursor:pointer;white-space:nowrap;transition:color .2s}
         .measure-btn:hover{color:var(--text-primary)}
@@ -191,17 +205,22 @@
             <p class="modal-subtitle">Coconino County Sheriff&#39;s Search &amp; Rescue</p>
             <div class="modal-options">
                 <div class="modal-option" onclick="selectMode('ipp')">
-                    <span class="option-icon">&#127759;</span>
+                    <span class="option-icon">&#127919;</span>
                     <div class="option-title">IPP Only</div>
                     <div class="option-desc">Generate a probability surface from an IPP and search radius. No CalTopo segments required.</div>
                 </div>
                 <div class="modal-option" onclick="selectMode('caltopo')">
-                    <span class="option-icon">&#128506;</span>
+                    <span class="option-icon">&#129513;</span>
                     <div class="option-title">Import CalTopo</div>
                     <div class="option-desc">Import segments and IPP from a CalTopo map for full segment analysis and POA ranking.</div>
                 </div>
+                <div class="modal-option" onclick="selectMode('isochrone')">
+                    <span class="option-icon">&#128339;</span>
+                    <div class="option-title">Travel Time</div>
+                    <div class="option-desc">Model where a subject could be over time at a given travel speed. No LPB profile needed.</div>
+                </div>
             </div>
-            <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">Note: This tool generates spatial probability estimates based on terrain, land cover, and modeled travel behavior from the IPP. These outputs are intended as one input among many in the search planning process and do not replace the judgment of search planners, investigators, or incident command staff.</p>
+            <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);"><b><u>Note</u></b>: This tool generates spatial probability estimates based on terrain, land cover, and modeled travel behavior from the IPP. These outputs are intended as one input among many in the search planning process and do not replace the judgment of search planners, investigators, or incident command staff.</p>
         </div>
     </div>
     <!-- ============================================================
@@ -213,6 +232,31 @@
         <div class="modal" style="max-width:650px;max-height:90vh;overflow-y:auto;text-align:left;padding:32px;">
             <h2 style="text-align:center;font-size:22px;color:#ffca00;margin-bottom:4px;">Changelog</h2>
             <p style="text-align:center;font-size:13px;color:var(--text-muted);margin-bottom:24px;">WiSAR Decision Support Tool / SAR TARR Tool</p>
+            <div style="margin-bottom:24px;">
+    			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.13 &#8212; April 21, 2026</h3>
+    			<div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">OSM local cache fallback:</span> When all public Overpass API endpoints fail, the pipeline now falls through to a locally-maintained OSM cache covering Arizona, California, Utah, Nevada, and New Mexico. Cached data is built weekly from Geofabrik state extracts (~8.3 million trail, road, waterway, and power line features in a spatially-indexed GeoPackage). This guarantees that trail and corridor data are always available for in-state searches, even during widespread Overpass outages.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Data-source warnings:</span> A new status panel in the Analysis Results section surfaces data-source notices to the coordinator &mdash; e.g., &ldquo;OSM live servers unavailable &mdash; using cached data from 2026-04-21 (0.0 days old).&rdquo; Severity is differentiated: &ldquo;info&rdquo; for successful fallbacks where output is operationally equivalent, &ldquo;warning&rdquo; for degraded results (cache missing, outside coverage, or read error).</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Runtime optimization:</span> Typical analysis runtime reduced from ~4 minutes to ~20 seconds. The Overpass per-attempt timeout was lowered from 90s to 20s, a persistent HTTP 406 from overpass-api.de was resolved by adding a proper User-Agent header on all outbound requests, and a non-responsive endpoint (maps.mail.ru) was removed from the rotation. Worst-case OSM phase (all live endpoints failed) reduced from 183s to ~42s with automatic cache fallback.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Cache builder tool:</span> New tools/build_osm_cache.py script performs the weekly cache refresh. Uses memory-bounded Arrow record-batch streaming to process multi-gigabyte state PBFs on modest hardware. Scheduled via cron to run every Sunday at 3 AM MST.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Server logging:</span> Gunicorn now forwards pipeline stdout to journalctl with real-time unbuffered output, enabling production diagnostics without restart.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">CalTopo travel-time export:</span> The CalTopo export endpoint now produces correct per-feature titles and descriptions for both TARR contours and travel-time isochrones. TARRs appear in CalTopo as &ldquo;TARR 25%&rdquo;, &ldquo;TARR 50%&rdquo;, &ldquo;TARR 75%&rdquo; with cost-distance thresholds; isochrones appear as &ldquo;Travel Time: 1.0h&rdquo;, &ldquo;Travel Time: 4.0h&rdquo;, etc. with reachability descriptions. Previously isochrones exported with generic &ldquo;TARR&rdquo; titles and no meaningful descriptions.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Full-fidelity CalTopo polygons:</span> The CalTopo API client now transmits JSON payloads in the request body instead of the URL query string, matching CalTopo&rsquo;s official reference implementations. This removes the practical URL-length cap that previously required aggressive polygon simplification (targeting ~200&ndash;500 vertices) and sometimes caused large travel-time contours to fail export entirely. Polygons are now sent at full pipeline fidelity; coordinate precision is capped at 5 decimal places (~1.1 m) for a roughly 40% payload reduction with no visible accuracy loss.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Switch Mode cleanup:</span> The Switch Mode and Reset buttons now correctly clear CalTopo export panel state between analyses &mdash; hiding the export section, clearing the Map ID input, dismissing the success/error message, and dropping references to any previous analysis result. Previously, stale export state persisted across mode switches.</p>
+        			<p style="margin-bottom:0;"><span style="color:var(--text-primary);font-weight:600;">Travel Time interval adjustment:</span> Removed the 24-hour interval option from Travel Time mode. At typical walking speeds, a 24-hour analysis radius exceeds 180 km, producing bounding boxes too large for public Overpass servers and computational loads disproportionate to operational SAR utility. Remaining intervals (1h, 2h, 4h, 8h, 12h) cover the practical range of on-foot SAR scenarios.</p>
+    			</div>
+			</div>
+            <div style="margin-bottom:24px;">
+    			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.12 &#8212; April 15, 2026</h3>
+    			<div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Travel Time mode:</span> New third analysis mode alongside IPP Only and CalTopo Import. Generates time-based reachability contours showing where a subject could physically be after a specified number of hours at a given flat-ground travel speed. The coordinator supplies a speed (mph or km/h, with presets for impaired/slow/moderate/fit hiker) and selects time intervals (1h, 2h, 4h, 8h, 12h, 24h). No Lost Person Behavior profile is required &mdash; this mode models physical capability rather than statistical find-distance likelihood.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Shared pipeline:</span> Travel Time mode reuses the same anisotropic cost-distance pipeline (Tobler slope function, NLCD friction, OSM trail/road/power line networks, NHD hydrology) as TARR modes. The cost-distance output is converted from terrain-equivalent meters to hours using the coordinator&rsquo;s base speed, then contoured at the requested time intervals.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Auto-scaling radius:</span> The analysis bounding box automatically scales to the estimated maximum reach (speed &times; max hours &times; 1.5 + 1 km buffer), ensuring isochrone contours are never clipped by the analysis extent.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Full export support:</span> Travel time contours are exported as KML, GeoJSON, and directly to CalTopo maps using the same polygon export infrastructure as TARRs. Download labels and CalTopo export buttons dynamically update to reflect the active mode.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Mode-specific legend:</span> The map legend dynamically switches between TARR percentile swatches and travel time contour swatches based on the active analysis mode. Legend auto-opens when travel time analysis completes.</p>
+        			<p style="margin-bottom:0;"><span style="color:var(--text-primary);font-weight:600;">UI updates:</span> Wider splash modal for three mode options. Mode-specific sidebar sections (Travel Speed &amp; Time replaces Subject Profile in travel time mode). Accordion workflow adapted for the new mode with correct section focus and status tracking.</p>
+    			</div>
+			</div>
             <div style="margin-bottom:24px;">
     			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.11 &#8212; April 14, 2026</h3>
     			<div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
@@ -335,12 +379,12 @@
 
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">Description</h3>
-                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">The WiSAR Decision Support Tool is a web-based geospatial application that generates terrain-aware travel cost surfaces and Terrain-Aware Range Rings (TARRs) from an Initial Planning Point (IPP) using anisotropic cost-distance analysis. It supports IPP-only analysis and CalTopo segment import with Probability of Area (POA) ranking.</p>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">The WiSAR Decision Support Tool is a web-based geospatial application that generates terrain-aware travel cost surfaces and Terrain-Aware Range Rings (TARRs) from an Initial Planning Point (IPP) using anisotropic cost-distance analysis. It supports three analysis modes: IPP-only TARR generation, CalTopo segment import with Probability of Area (POA) ranking, and Travel Time reachability modeling at a user-specified travel speed.</p>
             </div>
 
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">Purpose</h3>
-                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">Developed as a proof-of-concept to bridge the gap between spatial probability modeling and operational SAR workflows. TARRs replace traditional Euclidean range rings with contours shaped by actual terrain conditions, improving search area prioritization during active incidents.</p>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">Developed as a proof-of-concept to bridge the gap between spatial probability modeling and operational SAR workflows. TARRs replace traditional Euclidean range rings with contours shaped by actual terrain conditions, improving search area prioritization during active incidents. Travel Time mode extends the same terrain model to show time-based reachability at a coordinator-specified travel speed, following the mobility model approach of Doherty et al. (2014).</p>
             </div>
 
             <div style="margin-bottom:20px;">
@@ -352,6 +396,7 @@
                 <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">POA ranking:</strong> Log-normal distribution fitted to user percentiles. Continuous probability density evaluated per cell, summed within each CalTopo segment. Values normalized across defined segments to sum to 100%.</p>
                 <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">CalTopo export:</strong> TARR contour polygons and POA segment rankings are pushed to CalTopo maps via authenticated API requests (HMAC-SHA256 signed, CCSO-SAR service account). Polygons simplified to &le;100 vertices for URL-parameter delivery.</p>
                 <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">GeoJSON export:</strong> TARR contour polygons downloadable as standard GeoJSON FeatureCollection with percentile, threshold, and color properties. Compatible with TAK/CloudTAK, QGIS, ArcGIS, and web mapping applications.</p>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:8px;"><strong style="color:var(--text-primary);">Travel Time mode:</strong> Converts the cost-distance surface from terrain-equivalent meters to hours of travel time using a user-specified flat-ground speed: hours = cost_distance_m / (speed_kmh &times; 1000). This reuses the identical anisotropic cost-distance pipeline &mdash; only the interpretation of the output changes. Contours are extracted at user-selected time intervals (e.g., 1h, 2h, 4h, 8h) and represent the maximum extent a subject could physically reach from the IPP. Conceptually equivalent to the mobility model of Doherty et al. (2014), with the addition of user-configurable base speed and on-demand analysis for any CONUS location.</p>
             </div>
 
             <div style="margin-bottom:20px;">
@@ -411,6 +456,7 @@
                 <table style="width:100%;border-collapse:collapse;font-size:12px;color:var(--text-secondary);">
                     <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);width:35%;">Probability Density Surface</td><td style="padding:5px 0;">Search priority surface colored by percentile band. Each TARR band (0&ndash;p25, p25&ndash;p50, p50&ndash;p75) receives equal color ramp weight: red/orange = inside 25th, yellow/green = 25th&ndash;50th, teal/blue = 50th&ndash;75th. Travel corridors (trails, roads, power lines) highlighted as brighter lines. Alpha fades beyond 75th percentile. Default: on.</td></tr>
                     <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Percentile Contours (TARRs)</td><td style="padding:5px 0;">Vector contour polygons at 25th, 50th, 75th percentile thresholds. Default: on (when percentiles provided).</td></tr>
+                    <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Travel Time Contours</td><td style="padding:5px 0;">Vector contour polygons at user-selected time intervals (Travel Time mode only). Color-coded outline-only rendering with labels at each contour boundary. Default: on.</td></tr>
                     <tr><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Terrain Difficulty</td><td style="padding:5px 0;">Local slope + landcover difficulty per cell, independent of distance from IPP. Default: off.</td></tr>
                 </table>
             </div>
@@ -451,6 +497,7 @@
                 <p style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Ferguson, D. (2013). IGT4SAR. GitHub.</p>
                 <p style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Koester, R.J. (2008). <em>Lost Person Behavior.</em> dbS Productions.</p>
                 <p style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Sava, E. et al. (2016). Transactions in GIS, 20(1), 38-53.</p>
+                <p style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Sherrill, K.R., Frakes, B., &amp; Schupbach, S. (2010). Travel Time Cost Surface Model: Standard Operating Procedure. NPS NRR-2010/238.</p>
                 <p style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Tobler, W. (1993). Technical Report 93-1, NCGIA.</p>
             </div>
 
@@ -459,7 +506,7 @@
                 <p style="font-size:12px;color:var(--text-secondary);">Jamie Weleber, Coconino County Sheriff's Search &amp; Rescue<br><a href="https://sar.weleber.net" style="color:var(--accent);">https://sar.weleber.net</a></p>
             </div>
 
-            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: April 14, 2026 | Version 1.11</p>
+            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: April 21, 2026 | Version 1.13</p>
 
             <div style="text-align:center;">
                 <button onclick="document.getElementById('metadataModal').classList.add('hidden');" style="padding:10px 32px;background:var(--accent);color:white;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Close</button>
@@ -536,7 +583,7 @@
                 <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">Small-sample profiles:</strong> Five profiles have fewer than 20 subjects and use global default multipliers. Rates for these profiles should be interpreted with caution.</p>
             </div>
 
-            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Data source: Coconino County Sheriff&rsquo;s Office historical SAR records | Validation date: April 14, 2026 | Version 1.11</p>
+            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Data source: Coconino County Sheriff&rsquo;s Office historical SAR records | Validation date: April 14, 2026 | Version 1.13</p>
 
             <div style="text-align:center;">
                 <button onclick="document.getElementById('validationModal').classList.add('hidden');" style="padding:10px 32px;background:var(--accent);color:white;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Close</button>
@@ -789,6 +836,59 @@
                 </div>
             </div>
 
+            <!-- ======== SECTION 3b: Isochrone Controls (isochrone mode only) ======== 
+                 This section replaces Subject Profile when in isochrone mode.
+                 The coordinator sets a flat-ground travel speed and selects
+                 time intervals. No Koester LPB profile is needed because
+                 isochrone mode models physical reachability, not statistical
+                 find-distance likelihood. ======== -->
+            <div class="acc-section band-light hidden" id="accIsochrone">
+                <div class="acc-header" onclick="toggleSection('accIsochrone')">
+                    <div class="acc-header-left">
+                        <div class="acc-status-dot" id="accIsochroneStatus"></div>
+                        <span class="acc-title">Travel Speed &amp; Time</span>
+                        <span class="acc-summary" id="accIsochroneSummary"></span>
+                    </div>
+                    <svg class="acc-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="acc-body">
+                    <!-- Speed input with unit toggle — US SAR coordinators think in mph -->
+                    <div class="input-group">
+                        <label>Flat-Ground Travel Speed</label>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input type="number" id="isoSpeed" placeholder="1.0" step="0.1" min="0.1" max="12" style="flex:1;" />
+                            <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+                                <button id="isoUnitMph" onclick="setIsoUnit('mph')" style="padding:8px 12px;background:var(--accent);color:white;border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">mph</button>
+                                <button id="isoUnitKmh" onclick="setIsoUnit('kmh')" style="padding:8px 12px;background:var(--bg-input);color:var(--text-secondary);border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border-left:1px solid var(--border);">km/h</button>
+                            </div>
+                        </div>
+                        <div class="input-hint">Assumed speed on flat, unobstructed terrain. The model adjusts for slope, land cover, and trail networks.</div>
+                    </div>
+                    <!-- Speed presets — common operational scenarios -->
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+                        <button onclick="setIsoSpeedPreset(0.5,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">0.5 mph<br><span style="font-size:10px;color:var(--text-muted);">Impaired</span></button>
+                        <button onclick="setIsoSpeedPreset(1.0,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">1.0 mph<br><span style="font-size:10px;color:var(--text-muted);">Slow</span></button>
+                        <button onclick="setIsoSpeedPreset(2.0,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">2.0 mph<br><span style="font-size:10px;color:var(--text-muted);">Moderate</span></button>
+                        <button onclick="setIsoSpeedPreset(3.1,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">3.1 mph<br><span style="font-size:10px;color:var(--text-muted);">Fit hiker</span></button>
+                    </div>
+                    <!-- Time interval checkboxes -->
+                    <div class="input-group">
+                        <label>Time Intervals (hours)</label>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="isoIntervalBtns">
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="1" checked /> 1h</label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="2" checked /> 2h</label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="4" checked /> 4h</label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="8" checked /> 8h</label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="12" /> 12h</label>
+                        </div>
+                        <div class="input-hint">Each interval generates a contour showing the outer boundary of where the subject could physically be after that amount of time.</div>
+                    </div>
+                    <button class="btn-primary" id="isoRunBtn" onclick="runIsochroneAnalysis()" disabled style="background:#00897b;">Run Travel Time Analysis</button>
+                    <div class="input-hint" style="margin-top:8px;text-align:center;">Set an IPP and travel speed to enable.</div>
+                    <div class="status-bar" id="isoStatusBar"><div class="status-dot"></div><span id="isoStatusText"></span></div>
+                </div>
+            </div>
+
             <!-- ======== SECTION 4: Search Radius (IPP mode only, optional) ======== -->
             <div class="acc-section band-dark hidden collapsed" id="accRadius">
                 <div class="acc-header" onclick="toggleSection('accRadius')">
@@ -819,6 +919,12 @@
                     <svg class="acc-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <div class="acc-body">
+					<!-- Data-source warnings (OSM cache fallback, etc.) — populated by app.js when
+                         the pipeline used a non-primary data source. Placed inside accAnalysis so
+                         warnings appear alongside results and follow accAnalysis's expand/collapse
+                         behavior (the section auto-expands after analysis completes). -->
+                    <div class="data-warnings" id="analysisDataWarnings"></div>
+                    <div class="data-warnings" id="isoDataWarnings"></div>
                     <div id="layerToggles" class="hidden" style="padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:pointer;" onclick="var c=document.getElementById('toggleContent');c.style.display=c.style.display==='none'?'block':'none';this.querySelector('span:last-child').textContent=c.style.display==='none'?'+':'-';">
                             <span style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;">Map Layers</span>
@@ -977,19 +1083,26 @@
         window.onIppPlaced=function(lat,lng,source){
             collapseSection('accIpp',lat.toFixed(4)+', '+lng.toFixed(4));
             setSectionStatus('accIpp','done');
-            /* In IPP mode, advance to radius; in CalTopo mode, keep CalTopo
-               band open (user still needs to click Load Segments) and just
-               collapse the IPP band */
-            if(currentMode==='ipp'){
+            /* Advance to the appropriate next section based on mode:
+               IPP mode -> Subject Profile, CalTopo -> stays on CalTopo,
+               Isochrone -> Travel Speed & Time controls */
+            if(currentMode==='isochrone'){
+                focusSection('accIsochrone');
+            }else if(currentMode==='ipp'){
                 focusSection('accTarr');
             }
         };
 
-        /* Called when analysis starts — Subject Profile section stays open
-           because it now contains the Run button and progress status bar */
+        /* Called when analysis starts — the active input section stays open
+           because it contains the Run button and progress status bar */
         window.onAnalysisStart=function(){
-            setSectionStatus('accTarr','active');
-            focusSection('accTarr');
+            if(currentMode==='isochrone'){
+                setSectionStatus('accIsochrone','active');
+                focusSection('accIsochrone');
+            }else{
+                setSectionStatus('accTarr','active');
+                focusSection('accTarr');
+            }
         };
 
         /* Called when analysis completes */
@@ -1041,18 +1154,31 @@
         window.onModeSelected=function(mode){
             var calSec=document.getElementById('accCaltopo');
             var radSec=document.getElementById('accRadius');
+            var tarrSec=document.getElementById('accTarr');
+            var isoSec=document.getElementById('accIsochrone');
             if(mode==='caltopo'){
                 calSec.classList.remove('hidden');
                 radSec.classList.add('hidden');
+                tarrSec.classList.remove('hidden');
+                isoSec.classList.add('hidden');
+            }else if(mode==='isochrone'){
+                /* Isochrone mode: hide CalTopo, Subject Profile, and Search Radius.
+                   Show the isochrone controls instead. */
+                calSec.classList.add('hidden');
+                radSec.classList.add('hidden');
+                tarrSec.classList.add('hidden');
+                isoSec.classList.remove('hidden');
             }else{
                 calSec.classList.add('hidden');
                 radSec.classList.remove('hidden');
+                tarrSec.classList.remove('hidden');
+                isoSec.classList.add('hidden');
             }
             /* Hide and reset POA */
             var poaSec=document.getElementById('accPoa');
             if(poaSec)poaSec.classList.add('hidden');
             /* Clear all status dots and summaries */
-            ['accCaltopo','accIpp','accRadius','accTarr','accAnalysis','accPoa'].forEach(function(id){
+            ['accCaltopo','accIpp','accRadius','accTarr','accIsochrone','accAnalysis','accPoa'].forEach(function(id){
                 setSectionStatus(id,null);
                 var sum=document.getElementById(id+'Summary');
                 if(sum)sum.textContent='';
@@ -1068,14 +1194,19 @@
 
         /* Called on reset to restore all sections */
         window.onToolReset=function(){
-            ['accCaltopo','accIpp','accRadius','accTarr','accAnalysis','accPoa'].forEach(function(id){
+            ['accCaltopo','accIpp','accRadius','accTarr','accIsochrone','accAnalysis','accPoa'].forEach(function(id){
                 expandSection(id);
                 setSectionStatus(id,null);
                 var sum=document.getElementById(id+'Summary');
                 if(sum)sum.textContent='';
             });
             document.getElementById('accPoa').classList.add('hidden');
-            restripeAccordion();
+            /* Re-apply mode-specific visibility so the correct sections
+               remain visible after reset. Without this, isochrone mode
+               loses its Travel Speed & Time section on reset. */
+            if(currentMode){
+                window.onModeSelected(currentMode);
+            }
         };
 
         /* ---- Compatibility bridge for app.js ----
