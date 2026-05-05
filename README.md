@@ -1,8 +1,8 @@
 # WiSAR Decision Support Tool
 
-**Terrain-Aware Range Rings (TARRs) for Wilderness Search and Rescue (v1.14)**
+**A Terrain-Aware Planning Aid for Wilderness Search and Rescue (v1.14)**
 
-A web-based spatial analysis tool that generates anisotropic probability surfaces for SAR operations. Instead of drawing simple Euclidean distance rings around an Initial Planning Point (IPP), TARRs trace contours of equal travel cost across real terrain, compressing against steep slopes, dense forest, and water barriers, while expanding along trails and valleys where a person can move easily.
+A web-based spatial analysis tool for Wilderness SAR operations. Instead of drawing simple Euclidean distance rings around an Initial Planning Point (IPP), it builds an anisotropic cost surface from elevation, land cover, hydrology, and OSM linear features, then traces contours of equal travel cost across real terrain - compressing against steep slopes, dense forest, and water barriers, while expanding along trails and valleys where a person can move easily. The cost surface drives both Terrain-Aware Range Rings (TARRs) at Koester find-distance percentiles and travel-time isochrones at user-specified time bands, with KML/GeoJSON exports and CalTopo integration for segment import and contour write-back.
 
 **Live site:** [https://sar.weleber.net](https://sar.weleber.net)
 
