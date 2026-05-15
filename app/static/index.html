@@ -16,7 +16,7 @@
      
      Author:  Jamie F. Weleber
      Created: March 2026
-     Version: 1.14
+     Version: 1.15
      ============================================================ -->
 <html lang="en">
 <!-- ============================================================
@@ -44,7 +44,7 @@
          can be changed by editing these values in one place. -->
 	<style>
         @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-        :root{--bg-primary:#0f1114;--bg-panel:#1a1d23;--bg-panel-alt:#282c35;--bg-input:#252830;--border:#2e3138;--border-light:#363a44;--text-primary:#e8e9ec;--text-secondary:#9498a3;--text-muted:#6b7080;--accent:#3b82f6;--accent-hover:#2563eb;--accent-glow:rgba(59,130,246,0.15);--success:#22c55e;--warning:#f59e0b;--danger:#ef4444}
+        :root{--bg-primary:#0f1114;--bg-panel:#1a1d23;--bg-panel-alt:#282c35;--bg-input:#252830;--bg-field:#444a55;--border:#2e3138;--border-light:#363a44;--text-primary:#e8e9ec;--text-secondary:#9498a3;--text-muted:#6b7080;--accent:#3b82f6;--accent-hover:#2563eb;--accent-glow:rgba(59,130,246,0.15);--success:#22c55e;--warning:#f59e0b;--danger:#ef4444;--sheet-handle-h:24px;--sheet-strip-h:50px;--panel-header-h:60px}
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Source Sans 3',sans-serif;background:var(--bg-primary);color:var(--text-primary);height:100vh;overflow:hidden;display:flex}
         .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:9999;display:flex;align-items:center;justify-content:center;animation:fadeIn .3s ease-out}
@@ -85,17 +85,12 @@
         .acc-status-dot.active{display:block;background:var(--accent)}
         .acc-status-dot.error{display:block;background:var(--danger)}
 
-        /* ---- POA internal scroll ---- */
-        #poaResults{max-height:40vh;overflow-y:auto}
-
-        /* ---- Segment list internal scroll ---- */
-        #segmentItems{max-height:30vh;overflow-y:auto}
-
         .input-group{margin-bottom:20px}
         .input-group label{display:block;font-size:14px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
-        .input-group input,.input-group select{width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s}
-        .input-group select{font-family:'Source Sans 3',sans-serif;cursor:pointer}
+        .input-group input{width:100%;padding:10px 14px;background:#F0F0F0;border:1px solid var(--border);border-radius:6px;color:#0f1114;font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s}
+        .input-group select{width:100%;padding:10px 14px;background:var(--bg-field);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:'Source Sans 3',sans-serif;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;cursor:pointer}
         .input-group input:focus,.input-group select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+        .input-group input[readonly]:focus{border-color:var(--border);box-shadow:none}
         .input-group input::placeholder{color:var(--text-muted);font-family:'Source Sans 3',sans-serif;font-size:13px}
         .input-hint{font-size:14px;color:var(--text-secondary);margin-top:6px;line-height:1.5}
         .percentile-row{display:flex;gap:10px}
@@ -105,6 +100,17 @@
         .btn-primary:hover{background:var(--accent-hover)}
         .btn-primary:active{transform:scale(0.98)}
         .btn-primary:disabled{background:var(--bg-input);color:var(--text-muted);cursor:not-allowed}
+        /* Teal variant for the Travel Time mode's Run button.
+           Defined AFTER :disabled so enabled-state teal applies, but the
+           :disabled selector still wins over .btn-teal for disabled state
+           because both have specificity (0,2,0) and disabled comes later
+           in the cascade once we use :not(:disabled) here.
+           Using :not(:disabled) makes the intent explicit: this teal color
+           applies only when the button is interactive. When disabled, the
+           generic .btn-primary:disabled rule above wins, giving the same
+           gray "not ready" affordance as the regular Run Analysis button. */
+        .btn-primary.btn-teal:not(:disabled){background:#00897b}
+        .btn-primary.btn-teal:not(:disabled):hover{background:#00766a}
         .btn-green{background:#22c55e}
         .btn-green:hover{background:#16a34a}
         .status-bar{padding:10px 14px;border-radius:6px;font-size:14px;margin-top:16px;display:none;align-items:center;gap:8px;line-height:1.4}
@@ -131,7 +137,7 @@
         .data-warning.warning .dw-dot{background:var(--warning)}
         .segment-list{margin-top:16px}
         .segment-list-header{font-size:14px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;display:flex;justify-content:space-between}
-        .segment-item{padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer;transition:border-color .2s,background .2s}
+        .segment-item{padding:12px 14px;background:var(--bg-field);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;cursor:pointer;transition:border-color .2s,background .2s}
         .segment-item:hover{border-color:var(--accent);background:rgba(59,130,246,0.05)}
         .segment-item .seg-name{font-weight:600;font-size:14px;margin-bottom:4px}
         .segment-item .seg-meta{font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
@@ -171,17 +177,245 @@
         .basemap-btn:hover{background:var(--bg-input);color:var(--text-primary)}
         .basemap-btn.active{background:var(--accent);color:#fff}
         .basemap-btn.active:hover{background:var(--accent-hover)}
+
+        /* ============================================================
+           MOBILE LAYOUT (≤ 768px CSS pixels)
+
+           Two-state bottom sheet:
+             - collapsed: handle (24px) + status strip (50px) visible at bottom,
+               rest of panel hidden below viewport. Map dominant.
+             - peek: ~50vh of panel visible, internal scroll handles all
+               accordion sections. User scrolls within the peek to reach any
+               control without ever needing a fullscreen state.
+
+           Why no expanded/fullscreen state:
+           A fullscreen panel hides the map with no obvious "back" affordance.
+           Since peek is internally scrollable, expanded adds nothing — the
+           user only ever interacts with one accordion section at a time on
+           mobile anyway, so seeing all sections at once isn't useful.
+
+           The critical scroll fix: .panel-body's max-height is constrained
+           to the *visible* portion of the sheet, not the sheet's full height.
+           Without this, .panel-body extends below the viewport bottom and
+           its bottom content is unreachable by scrolling.
+           ============================================================ */
+        @media (max-width: 768px){
+            /* Switch body from row to column. The sheet sits as a fixed
+               overlay anyway, but this also handles edge cases like the
+               (rare) browser that doesn't respect position:fixed correctly. */
+            body{flex-direction:column}
+
+            /* Panel becomes a fixed-position bottom sheet.
+               transform: translateY drives the snap states; we animate
+               transform (cheap, GPU-accelerated) rather than height.
+
+               CRITICAL: panel height and the collapsed translation MUST
+               use the same viewport unit, otherwise on devices where
+               vh != dvh (e.g. mobile browsers with collapsing URL bar)
+               the translation can exceed the panel height and push the
+               sheet entirely off-screen. We use dvh everywhere. */
+            .panel{
+                position:fixed;
+                left:0; right:0; bottom:0;
+                top:auto;
+                width:100%;
+                min-width:0;
+                max-width:100%;
+                /* Panel height equals the visible peek region.
+                   Previously panel was 90dvh tall with translation hiding
+                   the bottom 40dvh — but that pushed the footer past the
+                   visible threshold, leaving it unreachable. Now the
+                   panel is exactly the size of the peek region, so all
+                   children (header, body, footer) stack within view. */
+                height:50vh;
+                height:50dvh;
+                border-right:none;
+                border-top:1px solid var(--border);
+                border-radius:18px 18px 0 0;
+                box-shadow:0 -8px 32px rgba(0,0,0,0.5);
+                z-index:1500;
+                /* Default state is COLLAPSED: translate down so only the
+                   handle + status strip remain visible. Sheet height is
+                   50dvh, so we translate by (50dvh - 74px) to leave 74px. */
+                transform:translateY(calc(50dvh - 74px));
+                transition:transform .28s cubic-bezier(.32,.72,0,1);
+                padding-bottom:env(safe-area-inset-bottom);
+            }
+            /* Peek state: no translation — sheet sits at its natural
+               position, fully visible, occupying the bottom 50dvh. */
+            .panel.sheet-peek{
+                transform:translateY(0);
+            }
+            /* While the user is actively dragging, suppress the transition
+               so the sheet tracks the finger 1:1 instead of lagging. */
+            .panel.sheet-dragging{
+                transition:none;
+            }
+
+            /* Drag handle — universal bottom-sheet affordance.
+               touch-action:none prevents the browser from claiming the
+               vertical swipe (which would otherwise scroll the page or
+               trigger pull-to-refresh). */
+            .sheet-handle{
+                display:flex;
+                justify-content:center;
+                align-items:center;
+                height:var(--sheet-handle-h);
+                flex-shrink:0;
+                cursor:grab;
+                touch-action:none;
+                user-select:none;
+                -webkit-user-select:none;
+            }
+            .sheet-handle:active{cursor:grabbing}
+            .sheet-handle .grip{
+                width:44px;
+                height:5px;
+                background:var(--border-light);
+                border-radius:3px;
+                transition:background .15s;
+            }
+            .sheet-handle:hover .grip,
+            .panel.sheet-dragging .sheet-handle .grip{
+                background:var(--text-muted);
+            }
+
+            /* Status strip — visible in collapsed state, gives the user
+               context about the current step without expanding the sheet.
+               Tappable as a secondary way to expand to peek. */
+            .sheet-status-strip{
+                display:flex;
+                align-items:center;
+                gap:10px;
+                height:var(--sheet-strip-h);
+                padding:0 18px;
+                border-bottom:1px solid var(--border);
+                flex-shrink:0;
+                cursor:pointer;
+                background:var(--bg-panel);
+            }
+            .sheet-status-strip .ss-dot{
+                width:8px;height:8px;border-radius:50%;
+                background:var(--text-muted);
+                flex-shrink:0;
+            }
+            .sheet-status-strip .ss-dot.active{background:var(--accent)}
+            .sheet-status-strip .ss-dot.done{background:var(--success)}
+            .sheet-status-strip .ss-dot.error{background:var(--danger)}
+            .sheet-status-strip .ss-text{
+                display:flex;
+                flex-direction:column;
+                min-width:0;
+                flex:1;
+            }
+            .sheet-status-strip .ss-label{
+                font-size:13px;
+                font-weight:700;
+                color:var(--text-primary);
+                text-transform:uppercase;
+                letter-spacing:0.04em;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+            }
+            .sheet-status-strip .ss-summary{
+                font-size:12px;
+                color:var(--text-muted);
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+                margin-top:1px;
+            }
+            /* In peek state, the strip is redundant with the panel header,
+               so hide it. The collapsed state is when it earns its place. */
+            .panel.sheet-peek .sheet-status-strip{
+                display:none;
+            }
+
+            /* With the panel now sized to its visible region (50dvh),
+               panel-body's existing flex:1 + overflow-y:auto correctly
+               fills the space between header and footer. The footer
+               sits at the bottom of the visible sheet as a sibling. */
+            .panel-body{
+                /* iOS momentum scrolling for the internal scroll region */
+                -webkit-overflow-scrolling:touch;
+            }
+
+            /* Tighter padding inside the panel header on mobile. */
+            .panel-header{padding:8px 16px 12px}
+            .panel-header h1{font-size:16px}
+
+            /* Accordion sections — slightly tighter padding on mobile. */
+            .acc-header{padding:12px 16px}
+            .acc-body{padding:8px 16px 16px}
+
+            /* Panel footer — slightly more compact on mobile. */
+            .panel-footer{padding:10px 16px;font-size:11px}
+
+            /* Map fills full viewport on mobile.
+               position:fixed so it doesn't reflow when the sheet animates;
+               Leaflet handles tile rendering correctly when partially obscured. */
+            #map{
+                position:fixed;
+                inset:0;
+                width:100%;
+                height:100vh;
+                height:100dvh;
+            }
+
+            /* Basemap control moves from bottom-left to top-right so it's
+               visible in both collapsed and peek states (the bottom is
+               always at least partially obscured by the sheet now). */
+            .basemap-control{
+                bottom:auto;
+                left:auto;
+                top:12px;
+                right:12px;
+                z-index:1600;
+            }
+
+            /* Splash modal: stack the mode options vertically on narrow
+               screens. Side-by-side at 90% width gives each ~150px which
+               is too narrow for icon + title + description to breathe. */
+            .modal{padding:24px 20px;max-height:90vh;overflow-y:auto}
+            .modal h1{font-size:18px}
+            .modal-options{flex-direction:column;gap:10px}
+            .modal-option{padding:16px 14px}
+            .modal-option .option-icon{font-size:24px;margin-bottom:6px}
+            .modal-option .option-title{font-size:15px;margin-bottom:4px}
+            .modal-option .option-desc{font-size:13px}
+
+            /* Internal scroll caps relaxed — the panel-body itself scrolls
+               now, so double-scroll regions inside would feel bad. */
+            /* Percentile row: tighter gap so all three inputs fit on 360px. */
+            .percentile-row{gap:6px}
+        }
+
+        /* Hide mobile-only chrome on desktop. Keeping the markup in the DOM
+           year-round simplifies the JS — it doesn't need to add/remove
+           elements based on viewport. */
+        @media (min-width: 769px){
+            .sheet-handle,.sheet-status-strip{display:none}
+        }
     </style>
 </head>
 <!-- ============================================================
      BODY — Application layout
      
-     The page uses a two-column flexbox layout:
-       - Left: 380px fixed-width sidebar panel (controls, inputs, results)
-       - Right: Leaflet map fills remaining viewport width
+     The page adapts to two layouts via a CSS media query at 768px:
+     
+       Desktop (≥ 768px): two-column flexbox layout
+         - Left: 380px fixed-width sidebar panel (controls, inputs, results)
+         - Right: Leaflet map fills remaining viewport width
+     
+       Mobile (≤ 768px): map-dominant with bottom-sheet panel
+         - Map fills the full viewport
+         - Panel becomes a fixed bottom sheet with two snap states:
+             collapsed (handle + status strip visible at bottom)
+             peek (50dvh of the panel visible, internally scrollable)
      
      Three modal overlays sit on top of everything:
-       - Splash modal: mode selection (IPP Only vs CalTopo Import)
+       - Splash modal: TARR Analysis and Travel Time mode selection
        - Changelog modal: version history
        - Metadata modal: data sources, methodology, references
        - TARR explainer modal: educational content about TARRs
@@ -190,10 +424,7 @@
     <!-- ============================================================
          SPLASH MODAL — Mode selection on first load
          
-         Presents two workflow options:
-           1. IPP Only: user provides a single point + radius
-           2. CalTopo Import: user provides a CalTopo map ID to import
-              search segments and auto-detect IPP
+         Two analysis modes: TARR Analysis and Travel Time.
          
          The disclaimer at the bottom is intentional — SAR tools must
          clearly state their scope to prevent over-reliance on any
@@ -204,20 +435,15 @@
             <h1>WiSAR Decision Support Tool</h1>
             <p class="modal-subtitle">Coconino County Sheriff&#39;s Search &amp; Rescue</p>
             <div class="modal-options">
-                <div class="modal-option" onclick="selectMode('ipp')">
+                <div class="modal-option" onclick="selectMode('tarr')">
                     <span class="option-icon">&#127919;</span>
-                    <div class="option-title">IPP Only</div>
-                    <div class="option-desc">Generate a probability surface from an IPP and search radius. No CalTopo segments required.</div>
-                </div>
-                <div class="modal-option" onclick="selectMode('caltopo')">
-                    <span class="option-icon">&#129513;</span>
-                    <div class="option-title">Import CalTopo</div>
-                    <div class="option-desc">Import segments and IPP from a CalTopo map for full segment analysis and POA ranking.</div>
+                    <div class="option-title">TARR Analysis</div>
+                    <div class="option-desc">Generate Terrain-Aware Range Rings from an IPP using a Lost Person Behavior subject profile. Exports to CalTopo, KML, and GeoJSON.</div>
                 </div>
                 <div class="modal-option" onclick="selectMode('isochrone')">
                     <span class="option-icon">&#128339;</span>
                     <div class="option-title">Travel Time</div>
-                    <div class="option-desc">Model where a subject could be over time at a given travel speed. No LPB profile needed.</div>
+                    <div class="option-desc">Model where a subject could reach over time at a given travel speed. No LPB profile needed. Exports to CalTopo, KML, and GeoJSON.</div>
                 </div>
             </div>
             <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);"><b><u>Note</u></b>: This tool generates spatial probability estimates based on terrain, land cover, and modeled travel behavior from the IPP. These outputs are intended as one input among many in the search planning process and do not replace the judgment of search planners, investigators, or incident command staff.</p>
@@ -232,6 +458,28 @@
         <div class="modal" style="max-width:650px;max-height:90vh;overflow-y:auto;text-align:left;padding:32px;">
             <h2 style="text-align:center;font-size:22px;color:#ffca00;margin-bottom:4px;">Changelog</h2>
             <p style="text-align:center;font-size:13px;color:var(--text-muted);margin-bottom:24px;">WiSAR Decision Support Tool / SAR TARR Tool</p>
+            <div style="margin-bottom:24px;">
+    			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.15 &#8212; May 14, 2026</h3>
+    			<div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Jacobs Pure heatmap as default:</span> The default heatmap underneath the TARR contours is now driven by Matt Jacobs's (2015) terrain-attractor framework. Each pixel is colored by the strongest applicable empirical attractor signal &mdash; stream-trail intersections, trails/roads/power-line ROWs, low-elevation pockets, streams, and high-elevation prominence &mdash; independent of cost-distance position from the IPP. The TARR contours still mark the p25/p50/p75 cost-distance envelope on top, so coordinators see both the cost-distance reach and the within-envelope priority. Replaces the prior percentile-band heatmap.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Full-raster heatmap:</span> The heatmap now renders at full opacity across the entire cost-distance raster &mdash; no alpha fade past p75 and no attractor clipping past p75. Jacobs found that linear-feature PDEN increases with IPP-find distance, and roughly 1 in 4 finds occur outside the 75th percentile; keeping attractor signal visible to the bbox edge honors both.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Travel Time mode gets a heatmap:</span> The Jacobs Pure heatmap now renders underneath the time-isochrone polygons. Previously Travel Time mode displayed only the contour outlines with no terrain context inside them. Coordinators can now see, for example, that trails and stream-trail intersections within the 4-hour reach are warmer than open hillside at the same distance.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Isochrone intervals:</span> Default time-interval set changed from 1h/2h/4h/8h/12h to 2h/4h/6h/8h/10h/12h, all six checked by default. Even-hour spacing reads more naturally on the map; six contours gives a richer reachability picture for slow-subject planning.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Isochrone bbox sizing:</span> The Travel Time analysis radius now follows the same rule as TARR mode &mdash; <code>speed &times; max_hours + 2&nbsp;km</code> &mdash; replacing the prior 50% buffer multiplier. Consistent sizing across both modes, slightly tighter bbox at high speed/long duration.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">UI redesign (post-field-review):</span> Splash modal simplified to two modes: TARR Analysis (renamed from &ldquo;IPP Only&rdquo;) and Travel Time. The CalTopo Import mode has been retired &mdash; analysis is now anchored to the IPP only. The vestigial &ldquo;Search Radius&rdquo; accordion was removed (bbox is auto-computed). Subject-profile percentile fields are now read-only when populated from a Lost Person Behavior profile, since the values come directly from Koester's published statistics. Drop Pin button state now resets correctly on Reset and Switch Mode.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Field tuning:</span> Three post-deploy refinements after first-day testing in Sycamore Canyon. (1) Stream Strahler cutoff lowered from &ge;5 to &ge;3 to match Colorado Plateau hydrology &mdash; the strict &ge;5 filter emptied the stream mask for most local analyses since Strahler 5+ flowlines are rare west of the Mogollon Rim. Stream-trail intersections at named creeks like Sycamore Creek now register correctly. (2) Heatmap base opacity reduced from 170/255 to 130/255 so basemap shaded relief reads clearly through the overlay. (3) The white travel-corridor blend (a v1.07 visual aid that brightened friction=1.0 cells) was removed: under the Jacobs framework, trail proximity is already an explicit attractor (weight 0.55), so the blend duplicated the signal and bleached the strongest hotspots (intersections at weight 1.00 were rendering pink instead of red).</p>
+        			<p style="margin-bottom:0;"><span style="color:var(--text-primary);font-weight:600;">Internal cleanup:</span> Removed dead code paths from the CalTopo Import retirement (segment POA computation, segment bbox helper, three stale package re-exports). Refactored <code>switchMode</code> and <code>resetTool</code> to share a single state-clearing helper, eliminating a class of drift bugs (the Drop Pin button highlight was one such case). Layer toggle label updated to &ldquo;Terrain Attractor Priority&rdquo; with a tooltip naming Jacobs (2015) as the framework source.</p>
+    			</div>
+			</div>
+            <div style="margin-bottom:24px;">
+    			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.14 &#8212; May 4, 2026</h3>
+    			<div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Mobile layout:</span> Below 768 CSS pixels (phones, narrow tablets), the sidebar converts to a bottom-sheet panel with two snap states. Collapsed state shows a drag handle plus a status strip with the current workflow step (e.g., &ldquo;Subject Profile &mdash; in progress&rdquo;). Peek state reveals the full panel at 50% viewport height with internal scrolling. The map fills the remaining viewport. Drag the handle or tap to switch between states. Desktop layout (&ge; 768 CSS pixels) is unchanged.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Status strip:</span> The collapsed-state strip auto-populates from accordion state via a MutationObserver, so it stays in sync with the existing workflow logic without changes to app.js. Priority order: active step, then first incomplete step, then last completed step.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Form-element contrast:</span> Interactive form fields (subject profile dropdown, eco-region/terrain pills, percentile inputs, CalTopo Map ID inputs, IPP coordinate buttons, travel time speed presets, segment list rows) now use a lighter background (#444a55 vs #252830) so they stand out from the panel and read clearly in outdoor lighting on mobile screens. Passive elements (modal info panels, table striping, disabled buttons) keep the original color so the visual hierarchy still works.</p>
+        			<p style="margin-bottom:0;"><span style="color:var(--text-primary);font-weight:600;">Travel Time button state fix:</span> The Run Travel Time Analysis button no longer remains teal when disabled. Previously an inline background style overrode the disabled-state CSS, making the button look enabled before the user had set required inputs. The button is now correctly gray when disabled and teal when ready to run.</p>
+    			</div>
+			</div>
             <div style="margin-bottom:24px;">
     			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.13 &#8212; April 21, 2026</h3>
     			<div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
@@ -454,7 +702,7 @@
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">Map layers</h3>
                 <table style="width:100%;border-collapse:collapse;font-size:12px;color:var(--text-secondary);">
-                    <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);width:35%;">Probability Density Surface</td><td style="padding:5px 0;">Search priority surface colored by percentile band. Each TARR band (0&ndash;p25, p25&ndash;p50, p50&ndash;p75) receives equal color ramp weight: red/orange = inside 25th, yellow/green = 25th&ndash;50th, teal/blue = 50th&ndash;75th. Travel corridors (trails, roads, power lines) highlighted as brighter lines. Alpha fades beyond 75th percentile. Default: on.</td></tr>
+                    <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);width:35%;">Terrain Attractor Priority</td><td style="padding:5px 0;">Per-pixel priority surface colored by the strongest applicable Jacobs (2015) terrain-attractor signal. Hot (red) = stream-trail intersection. Warm (orange-yellow) = trail / road / power-line ROW proximity. Cool-warm (yellow-green) = low-elevation pocket or stream proximity. Cool (blue) = no attractor signal. Renders at full opacity across the entire cost-distance raster &mdash; no fade past p75 &mdash; honoring Jacobs's finding that linear-feature PDEN increases with distance from the IPP. Default: on.</td></tr>
                     <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Percentile Contours (TARRs)</td><td style="padding:5px 0;">Vector contour polygons at 25th, 50th, 75th percentile thresholds. Default: on (when percentiles provided).</td></tr>
                     <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Travel Time Contours</td><td style="padding:5px 0;">Vector contour polygons at user-selected time intervals (Travel Time mode only). Color-coded outline-only rendering with labels at each contour boundary. Default: on.</td></tr>
                     <tr><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Terrain Difficulty</td><td style="padding:5px 0;">Local slope + landcover difficulty per cell, independent of distance from IPP. Default: off.</td></tr>
@@ -506,7 +754,7 @@
                 <p style="font-size:12px;color:var(--text-secondary);">Jamie Weleber, Coconino County Sheriff's Search &amp; Rescue<br><a href="https://sar.weleber.net" style="color:var(--accent);">https://sar.weleber.net</a></p>
             </div>
 
-            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: May 04, 2026 | Version 1.14</p>
+            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: May 15, 2026 | Version 1.15</p>
 
             <div style="text-align:center;">
                 <button onclick="document.getElementById('metadataModal').classList.add('hidden');" style="padding:10px 32px;background:var(--accent);color:white;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Close</button>
@@ -717,50 +965,38 @@
          background bands provide visual separation between sections.
          
          Sections:
-           1. CalTopo Import (CalTopo mode) — Map ID, segments
-           2. Initial Planning Point — coordinates or map click
-           3. Search Radius (IPP mode only)
-           4. Terrain-Aware Range Rings — LPB profile, percentiles
-           5. Analysis — Generate button, layers, downloads
-           6. POA Results (CalTopo mode, post-analysis)
+           1. Initial Planning Point — coordinates or map click
+           2. Subject Profile (TARR mode) — LPB profile, percentiles
+           3. Travel Speed & Time (Travel Time mode)
+           4. Analysis Results — layers, downloads, CalTopo export
          ============================================================ -->
     <div class="panel">
+        <!-- Drag handle for mobile bottom-sheet behavior.
+             Hidden on desktop via @media (min-width: 769px) rule above.
+             Tap to toggle peek/collapsed; drag to snap to nearest state. -->
+        <div class="sheet-handle" id="sheetHandle" aria-label="Drag to resize panel" role="button" tabindex="0">
+            <div class="grip"></div>
+        </div>
+        <!-- Status strip — visible only on mobile, only when sheet is collapsed.
+             Shows the current workflow step so the user knows what's pending
+             without needing to expand the sheet. Content is auto-populated
+             from the accordion section state by updateStatusStrip(). -->
+        <div class="sheet-status-strip" id="sheetStatusStrip" aria-hidden="true">
+            <div class="ss-dot" id="ssDot"></div>
+            <div class="ss-text">
+                <span class="ss-label" id="ssLabel">Get started</span>
+                <span class="ss-summary" id="ssSummary">Tap to begin</span>
+            </div>
+        </div>
         <div class="panel-header">
             <h1>WiSAR Decision Support</h1>
             <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
                 <div class="subtitle" id="modeSubtitle" style="flex:1;">Proof of Concept</div>
-                <button onclick="switchMode()" style="padding:4px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">Switch Mode</button>
-                <button onclick="resetTool()" style="padding:4px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">Reset</button>
+                <button onclick="switchMode()" style="padding:4px 10px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-family:inherit;font-size:12px;cursor:pointer;">Switch Mode</button>
+                <button onclick="resetTool()" style="padding:4px 10px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-family:inherit;font-size:12px;cursor:pointer;">Reset</button>
             </div>
         </div>
         <div class="panel-body">
-            <!-- ======== SECTION 1: CalTopo Import (CalTopo mode only) ======== -->
-            <div class="acc-section band-light hidden" id="accCaltopo">
-                <div class="acc-header" onclick="toggleSection('accCaltopo')">
-                    <div class="acc-header-left">
-                        <div class="acc-status-dot" id="accCaltopoStatus"></div>
-                        <span class="acc-title">CalTopo Import</span>
-                        <span class="acc-summary" id="accCaltopoSummary"></span>
-                    </div>
-                    <svg class="acc-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </div>
-                <div class="acc-body" id="caltopoSection">
-                    <div class="input-group">
-                        <label>CalTopo Map ID</label>
-                        <input type="text" id="mapIdInput" placeholder="e.g. QV0Q1KC" />
-                        <div class="input-hint">Enter the Map ID from your CalTopo search incident map.</div>
-                    </div>
-                    <button class="btn-primary" id="fetchBtn" onclick="fetchSegments()">Retrieve Segments</button>
-                    <div class="status-bar" id="statusBar"><div class="status-dot"></div><span id="statusText"></span></div>
-                    <div class="segment-list" id="segmentList" style="display:none;">
-                        <div class="segment-list-header"><span>Retrieved Segments</span><span id="segmentCount"></span></div>
-                        <div style="display:flex;gap:12px;margin-bottom:8px;font-size:12px;"><a href="#" onclick="document.querySelectorAll('.seg-check').forEach(function(c){c.checked=true});return false;" style="color:var(--accent);text-decoration:none;">Select All</a><a href="#" onclick="document.querySelectorAll('.seg-check').forEach(function(c){c.checked=false});return false;" style="color:var(--accent);text-decoration:none;">Select None</a></div>
-                        <div id="segmentItems"></div>
-                    </div>
-                    <button class="btn-primary hidden" id="loadSegsBtn" onclick="loadSelectedSegments()" style="margin-top:12px;">Load Selected Segments</button>
-                </div>
-            </div>
-
             <!-- ======== SECTION 2: Initial Planning Point ======== -->
             <div class="acc-section band-dark" id="accIpp">
                 <div class="acc-header" onclick="toggleSection('accIpp')">
@@ -773,8 +1009,8 @@
                 </div>
                 <div class="acc-body">
                     <div style="display:flex;gap:8px;margin-bottom:16px;">
-                        <button id="ippCoordBtn" onclick="showCoordEntry()" style="flex:1;padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .2s;">Enter Coordinates</button>
-                        <button id="ippDropBtn" onclick="activateDropPin()" style="flex:1;padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .2s;">Drop Pin on Map</button>
+                        <button id="ippCoordBtn" onclick="showCoordEntry()" style="flex:1;padding:10px;background:var(--bg-field);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .2s;">Enter Coordinates</button>
+                        <button id="ippDropBtn" onclick="activateDropPin()" style="flex:1;padding:10px;background:var(--bg-field);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:border-color .2s;">Drop Pin on Map</button>
                     </div>
                     <div id="coordEntryDiv" class="hidden">
                         <div class="input-group">
@@ -805,13 +1041,10 @@
                     <svg class="acc-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <div class="acc-body">
-                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-                        <a href="#" onclick="document.getElementById('ringInfoModal').classList.remove('hidden');return false;" style="color:var(--accent);text-decoration:none;font-weight:400;">What are Terrain-Aware Range Rings?</a>
-                    </div>
                     <div class="input-group" style="margin-bottom:14px;">
                         <label>Subject Profile</label>
-                        <select id="lpbCategory" onchange="onCategoryChange()" style="width:100%;padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:14px;cursor:pointer;">
-                            <option value="">Select a profile or enter values manually</option>
+                        <select id="lpbCategory" onchange="onCategoryChange()" style="width:100%;padding:10px;background:var(--bg-field);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:14px;cursor:pointer;">
+                            <option value="">Select a subject profile</option>
                         </select>
                         <div id="lpbEcoRow" class="hidden" style="margin-top:10px;">
                             <label style="margin-bottom:4px;display:block;">Eco Region</label>
@@ -824,11 +1057,11 @@
                         <div id="lpbSource" class="hidden input-hint" style="margin-top:8px;">Source: Koester (2008), <em>Lost Person Behavior</em>. Via Ferguson (2013), IGT4SAR.</div>
                         <div id="calibrationIndicator" class="hidden input-hint" style="margin-top:6px;color:var(--accent);font-weight:600;"></div>
                     </div>
-                    <div class="input-hint" style="margin-bottom:14px;"><span style="font-weight:600;color:var(--text-primary);">Subject Distance Percentiles</span><br>Enter values manually or select a subject profile above. Distances in km.</div>
+                    <div class="input-hint" style="margin-bottom:14px;"><span style="font-weight:600;color:var(--text-primary);">Subject Distance Percentiles</span><br>Auto-populated from Koester (2008) when a subject profile is selected above. Distances in km.</div>
                     <div class="percentile-row">
-                        <div class="input-group"><label>25th %</label><input type="number" id="pct25" placeholder="e.g. 0.6" /></div>
-                        <div class="input-group"><label>50th %</label><input type="number" id="pct50" placeholder="e.g. 1.5" /></div>
-                        <div class="input-group"><label>75th %</label><input type="number" id="pct75" placeholder="e.g. 3.2" /></div>
+                        <div class="input-group"><label>25th %</label><input type="number" id="pct25" readonly style="background:var(--bg-input);color:var(--text-secondary);cursor:default;" placeholder="&mdash;" /></div>
+                        <div class="input-group"><label>50th %</label><input type="number" id="pct50" readonly style="background:var(--bg-input);color:var(--text-secondary);cursor:default;" placeholder="&mdash;" /></div>
+                        <div class="input-group"><label>75th %</label><input type="number" id="pct75" readonly style="background:var(--bg-input);color:var(--text-secondary);cursor:default;" placeholder="&mdash;" /></div>
                     </div>
                     <button class="btn-primary" id="runBtn" onclick="runAnalysis()" disabled>Run Analysis</button>
                     <div class="input-hint" style="margin-top:8px;text-align:center;">Set an IPP &amp; Subject Profile to enable.</div>
@@ -859,54 +1092,37 @@
                             <input type="number" id="isoSpeed" placeholder="1.0" step="0.1" min="0.1" max="12" style="flex:1;" />
                             <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
                                 <button id="isoUnitMph" onclick="setIsoUnit('mph')" style="padding:8px 12px;background:var(--accent);color:white;border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">mph</button>
-                                <button id="isoUnitKmh" onclick="setIsoUnit('kmh')" style="padding:8px 12px;background:var(--bg-input);color:var(--text-secondary);border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border-left:1px solid var(--border);">km/h</button>
+                                <button id="isoUnitKmh" onclick="setIsoUnit('kmh')" style="padding:8px 12px;background:var(--bg-field);color:var(--text-secondary);border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border-left:1px solid var(--border);">km/h</button>
                             </div>
                         </div>
                         <div class="input-hint">Assumed speed on flat, unobstructed terrain. The model adjusts for slope, land cover, and trail networks.</div>
                     </div>
                     <!-- Speed presets — common operational scenarios -->
                     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
-                        <button onclick="setIsoSpeedPreset(0.5,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">0.5 mph<br><span style="font-size:10px;color:var(--text-muted);">Impaired</span></button>
-                        <button onclick="setIsoSpeedPreset(1.0,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">1.0 mph<br><span style="font-size:10px;color:var(--text-muted);">Slow</span></button>
-                        <button onclick="setIsoSpeedPreset(2.0,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">2.0 mph<br><span style="font-size:10px;color:var(--text-muted);">Moderate</span></button>
-                        <button onclick="setIsoSpeedPreset(3.1,'mph')" style="padding:5px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">3.1 mph<br><span style="font-size:10px;color:var(--text-muted);">Fit hiker</span></button>
+                        <button onclick="setIsoSpeedPreset(0.5,'mph')" style="padding:5px 10px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">0.5 mph<br><span style="font-size:10px;color:var(--text-muted);">Impaired</span></button>
+                        <button onclick="setIsoSpeedPreset(1.0,'mph')" style="padding:5px 10px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">1.0 mph<br><span style="font-size:10px;color:var(--text-muted);">Slow</span></button>
+                        <button onclick="setIsoSpeedPreset(2.0,'mph')" style="padding:5px 10px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">2.0 mph<br><span style="font-size:10px;color:var(--text-muted);">Moderate</span></button>
+                        <button onclick="setIsoSpeedPreset(3.1,'mph')" style="padding:5px 10px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);font-family:inherit;font-size:12px;cursor:pointer;">3.1 mph<br><span style="font-size:10px;color:var(--text-muted);">Fit hiker</span></button>
                     </div>
                     <!-- Time interval checkboxes -->
                     <div class="input-group">
                         <label>Time Intervals (hours)</label>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;" id="isoIntervalBtns">
-                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="1" checked /> 1h</label>
                             <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="2" checked /> 2h</label>
                             <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="4" checked /> 4h</label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="6" checked /> 6h</label>
                             <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="8" checked /> 8h</label>
-                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="12" /> 12h</label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="10" checked /> 10h</label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;"><input type="checkbox" class="iso-interval" value="12" checked /> 12h</label>
                         </div>
                         <div class="input-hint">Each interval generates a contour showing the outer boundary of where the subject could physically be after that amount of time.</div>
                     </div>
-                    <button class="btn-primary" id="isoRunBtn" onclick="runIsochroneAnalysis()" disabled style="background:#00897b;">Run Travel Time Analysis</button>
+                    <button class="btn-primary btn-teal" id="isoRunBtn" onclick="runIsochroneAnalysis()" disabled>Run Travel Time Analysis</button>
                     <div class="input-hint" style="margin-top:8px;text-align:center;">Set an IPP and travel speed to enable.</div>
                     <div class="status-bar" id="isoStatusBar"><div class="status-dot"></div><span id="isoStatusText"></span></div>
                 </div>
             </div>
 
-            <!-- ======== SECTION 4: Search Radius (IPP mode only, optional) ======== -->
-            <div class="acc-section band-dark hidden collapsed" id="accRadius">
-                <div class="acc-header" onclick="toggleSection('accRadius')">
-                    <div class="acc-header-left">
-                        <div class="acc-status-dot" id="accRadiusStatus"></div>
-                        <span class="acc-title">Search Radius (Optional)</span>
-                        <span class="acc-summary" id="accRadiusSummary"></span>
-                    </div>
-                    <svg class="acc-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </div>
-                <div class="acc-body" id="radiusSection">
-                    <div class="input-group" style="margin-bottom:0;">
-                        <label>Radius Around IPP (meters)</label>
-                        <input type="number" id="radiusInput" placeholder="5000" value="5000" />
-                        <div class="input-hint">Defines the data download extent around the IPP. Max: 25,000m.</div>
-                    </div>
-                </div>
-            </div>
 
             <!-- ======== SECTION 5: Analysis Results / Layers / Downloads ======== -->
             <div class="acc-section band-light" id="accAnalysis">
@@ -931,12 +1147,12 @@
                             <span style="color:var(--text-muted);font-size:16px;">-</span>
                         </div>
                         <div id="toggleContent">
-                            <label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;font-size:13px;"><input type="checkbox" id="costToggle" checked onchange="if(this.checked){window.costOverlay.addTo(map);}else{map.removeLayer(window.costOverlay);}"> Search Priority &amp; Travel Corridors</label>
+                            <label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;font-size:13px;" title="Per-pixel terrain attractor strength per Jacobs (2015): stream-trail intersections, trails, low-elevation pockets, streams, high-elevation prominence."><input type="checkbox" id="costToggle" checked onchange="if(this.checked){window.costOverlay.addTo(map);}else{map.removeLayer(window.costOverlay);}"> Terrain Attractor Priority</label>
                             <label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;font-size:13px;"><input type="checkbox" id="pctToggle" checked onchange="if(this.checked){contourLayer.addTo(map);}else{map.removeLayer(contourLayer);}"> Percentile Contours (TARRs)</label>
                             <label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;font-size:13px;"><input type="checkbox" id="terrainToggle" onchange="if(this.checked){window.terrainOverlay.addTo(map);}else{map.removeLayer(window.terrainOverlay);}"> Terrain Difficulty</label>
                             <div id="downloadSection" class="hidden" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
                                 <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Download Images</div>
-                                <a id="dlCostPng" href="#" download="travel_cost.png" style="display:block;font-size:13px;color:var(--accent);text-decoration:none;margin-bottom:6px;">Travel Cost Surface (PNG)</a>
+                                <a id="dlCostPng" href="#" download="terrain_attractor_priority.png" style="display:block;font-size:13px;color:var(--accent);text-decoration:none;margin-bottom:6px;">Terrain Attractor Priority (PNG)</a>
                                 <a id="dlTerrainPng" href="#" download="terrain_difficulty.png" style="display:block;font-size:13px;color:var(--accent);text-decoration:none;margin-bottom:6px;">Terrain Difficulty (PNG)</a>
                                 <a id="dlPctPng" href="#" download="percentile_contours.png" style="display:none;font-size:13px;color:var(--accent);text-decoration:none;margin-bottom:6px;">Percentile Contours (PNG)</a>
                                 <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;margin-top:12px;">Download Raw Data</div>
@@ -947,33 +1163,30 @@
                                 <a id="dlContoursGeojson" href="#" onclick="downloadContoursGeojson();return false;" style="display:none;font-size:13px;color:var(--accent);text-decoration:none;margin-bottom:6px;">Percentile Contours (GeoJSON)</a>
                                 <div id="caltopoExportSection" style="display:none;margin-top:14px;padding-top:10px;border-top:1px solid var(--border);">
                                     <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Push to CalTopo</div>
+                                    <div id="caltopoTeamRow" style="margin-bottom:10px;">
+                                        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">CalTopo team</label>
+                                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:4px;"><input type="radio" name="caltopoTeam" value="ccso" checked onchange="onCaltopoTeamChange()" /> Coconino County SAR</label>
+                                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="caltopoTeam" value="other" onchange="onCaltopoTeamChange()" /> Other team</label>
+                                    </div>
+                                    <div id="caltopoCredsRow" style="display:none;margin-bottom:8px;padding:8px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;">
+                                        <div style="font-size:13px;font-style:italic;color:var(--text-secondary);margin-bottom:8px;line-height:1.4;">Credentials are not saved — enter them each session.</div>
+                                        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px;">Account ID</label>
+                                        <input type="text" id="caltopoAccountId" placeholder="e.g. N452G1" autocomplete="off" style="width:100%;padding:6px 8px;background:#F0F0F0;border:1px solid var(--border);border-radius:4px;color:#0f1114;font-size:13px;font-family:inherit;margin-bottom:6px;" />
+                                        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px;">Credential ID</label>
+                                        <input type="text" id="caltopoCredentialId" placeholder="" autocomplete="off" style="width:100%;padding:6px 8px;background:#F0F0F0;border:1px solid var(--border);border-radius:4px;color:#0f1114;font-size:13px;font-family:inherit;margin-bottom:6px;" />
+                                        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:2px;">Credential Key</label>
+                                        <input type="password" id="caltopoCredentialKey" placeholder="" autocomplete="off" style="width:100%;padding:6px 8px;background:#F0F0F0;border:1px solid var(--border);border-radius:4px;color:#0f1114;font-size:13px;font-family:inherit;" />
+                                    </div>
                                     <div id="caltopoExportMapIdRow" style="margin-bottom:8px;">
                                         <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">CalTopo Map ID</label>
-                                        <input type="text" id="caltopoExportMapId" placeholder="e.g. QV0Q1KC" style="width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;font-family:inherit;" />
+                                        <input type="text" id="caltopoExportMapId" placeholder="e.g. QV0Q1KC" style="width:100%;padding:8px 10px;background:#F0F0F0;border:1px solid var(--border);border-radius:6px;color:#0f1114;font-size:13px;font-family:inherit;" />
                                     </div>
                                     <button id="exportTarrsBtn" onclick="exportTarrsToCalTopo()" class="btn-primary" style="width:100%;padding:10px;font-size:13px;margin-bottom:6px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:var(--accent);cursor:pointer;border-radius:6px;font-weight:600;">Export TARRs to CalTopo</button>
-                                    <button id="updateSegsBtn" onclick="updateSegmentsOnCalTopo()" class="btn-primary" style="display:none;width:100%;padding:10px;font-size:13px;margin-bottom:6px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:var(--accent);cursor:pointer;border-radius:6px;font-weight:600;">Update Segment Rankings on CalTopo</button>
                                     <div id="caltopoExportStatus" style="display:none;font-size:12px;margin-top:6px;padding:6px 10px;border-radius:4px;"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- ======== SECTION 6: POA Results (CalTopo mode, post-analysis) ======== -->
-            <div class="acc-section band-dark hidden" id="accPoa">
-                <div class="acc-header" onclick="toggleSection('accPoa')">
-                    <div class="acc-header-left">
-                        <div class="acc-status-dot" id="accPoaStatus"></div>
-                        <span class="acc-title">POA Rankings</span>
-                        <span class="acc-summary" id="accPoaSummary"></span>
-                    </div>
-                    <svg class="acc-chevron" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </div>
-                <div class="acc-body" id="poaSection">
-                    <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:12px;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:4px;">POA values represent relative probability across defined segments based on the travel cost model. Rest of World (ROW) probability and non-movement-based scenarios are outside the scope of this analysis. These rankings are one data source for search planning and should be considered alongside investigative findings, subject behavior, clue data, and operational factors.</div>
-                    <div id="poaResults"></div>
                 </div>
             </div>
 
@@ -1072,13 +1285,6 @@
             if(targetId)expandSection(targetId);
         }
 
-        /* Called after segments are loaded onto the map */
-        window.onSegmentsLoaded=function(count,mapId){
-            collapseSection('accCaltopo',mapId+' — '+count+' segments loaded');
-            setSectionStatus('accCaltopo','done');
-            focusSection('accIpp');
-        };
-
         /* Called after IPP is placed */
         window.onIppPlaced=function(lat,lng,source){
             collapseSection('accIpp',lat.toFixed(4)+', '+lng.toFixed(4));
@@ -1088,7 +1294,7 @@
                Isochrone -> Travel Speed & Time controls */
             if(currentMode==='isochrone'){
                 focusSection('accIsochrone');
-            }else if(currentMode==='ipp'){
+            }else{
                 focusSection('accTarr');
             }
         };
@@ -1106,7 +1312,7 @@
         };
 
         /* Called when analysis completes */
-        window.onAnalysisComplete=function(hasPoa,segCount){
+        window.onAnalysisComplete=function(){
             /* Build the Subject Profile summary */
             var cat=document.getElementById('lpbCategory');
             var profile=cat?cat.options[cat.selectedIndex].text:'';
@@ -1120,21 +1326,7 @@
             setSectionStatus('accTarr','done');
             setSectionStatus('accAnalysis','done');
             document.getElementById('accAnalysisSummary').textContent='Complete';
-            if(hasPoa&&segCount>0){
-                var poaSec=document.getElementById('accPoa');
-                if(poaSec){
-                    poaSec.classList.remove('hidden');
-                    restripeAccordion();
-                    setSectionStatus('accPoa','done');
-                    document.getElementById('accPoaSummary').textContent=segCount+' segments ranked';
-                    /* Show both Analysis Results and POA */
-                    focusSection(null);
-                    expandSection('accAnalysis');
-                    expandSection('accPoa');
-                }
-            }else{
-                focusSection('accAnalysis');
-            }
+            focusSection('accAnalysis');
         };
 
         /* Re-stripe visible accordion sections so bands always alternate */
@@ -1152,96 +1344,324 @@
 
         /* Called on mode selection to show/hide mode-specific sections */
         window.onModeSelected=function(mode){
-            var calSec=document.getElementById('accCaltopo');
-            var radSec=document.getElementById('accRadius');
             var tarrSec=document.getElementById('accTarr');
             var isoSec=document.getElementById('accIsochrone');
-            if(mode==='caltopo'){
-                calSec.classList.remove('hidden');
-                radSec.classList.add('hidden');
-                tarrSec.classList.remove('hidden');
-                isoSec.classList.add('hidden');
-            }else if(mode==='isochrone'){
-                /* Isochrone mode: hide CalTopo, Subject Profile, and Search Radius.
-                   Show the isochrone controls instead. */
-                calSec.classList.add('hidden');
-                radSec.classList.add('hidden');
+            if(mode==='isochrone'){
                 tarrSec.classList.add('hidden');
                 isoSec.classList.remove('hidden');
             }else{
-                calSec.classList.add('hidden');
-                radSec.classList.remove('hidden');
                 tarrSec.classList.remove('hidden');
                 isoSec.classList.add('hidden');
             }
-            /* Hide and reset POA */
-            var poaSec=document.getElementById('accPoa');
-            if(poaSec)poaSec.classList.add('hidden');
             /* Clear all status dots and summaries */
-            ['accCaltopo','accIpp','accRadius','accTarr','accIsochrone','accAnalysis','accPoa'].forEach(function(id){
+            ['accIpp','accTarr','accIsochrone','accAnalysis'].forEach(function(id){
                 setSectionStatus(id,null);
                 var sum=document.getElementById(id+'Summary');
                 if(sum)sum.textContent='';
             });
             restripeAccordion();
-            /* Wizard: only the first visible section is open */
-            if(mode==='caltopo'){
-                focusSection('accCaltopo');
-            }else{
-                focusSection('accIpp');
-            }
+            focusSection('accIpp');
         };
 
         /* Called on reset to restore all sections */
         window.onToolReset=function(){
-            ['accCaltopo','accIpp','accRadius','accTarr','accIsochrone','accAnalysis','accPoa'].forEach(function(id){
+            ['accIpp','accTarr','accIsochrone','accAnalysis'].forEach(function(id){
                 expandSection(id);
                 setSectionStatus(id,null);
                 var sum=document.getElementById(id+'Summary');
                 if(sum)sum.textContent='';
             });
-            document.getElementById('accPoa').classList.add('hidden');
             /* Re-apply mode-specific visibility so the correct sections
-               remain visible after reset. Without this, isochrone mode
-               loses its Travel Speed & Time section on reset. */
+               remain visible after reset. */
             if(currentMode){
                 window.onModeSelected(currentMode);
             }
         };
 
-        /* ---- Compatibility bridge for app.js ----
-           app.js toggles 'hidden' on caltopoSection, radiusSection,
-           poaSection (the old IDs, now on acc-body divs). We observe
-           those elements and propagate visibility to the parent
-           acc-section div so the accordion header also hides/shows. */
+
+
+        /* ============================================================
+           Mobile bottom-sheet behavior
+
+           Two-state model: collapsed (default) and peek.
+             - collapsed: handle + status strip visible; map dominant
+             - peek: ~50vh of panel visible with internal scroll
+
+           No fullscreen state — peek is internally scrollable, so all
+           accordion content is reachable from peek without needing a
+           larger size that would obscure the map.
+
+           The status strip auto-populates from accordion state via a
+           MutationObserver: whenever any acc-section's status dot or
+           summary changes, we recompute and rewrite the strip text.
+           ============================================================ */
         (function(){
-            var pairs=[
-                ['caltopoSection','accCaltopo'],
-                ['radiusSection','accRadius'],
-                ['poaSection','accPoa']
-            ];
-            var observer=new MutationObserver(function(mutations){
-                mutations.forEach(function(m){
-                    if(m.type==='attributes'&&m.attributeName==='class'){
-                        var inner=m.target;
-                        var parentId=null;
-                        pairs.forEach(function(p){
-                            if(inner.id===p[0])parentId=p[1];
-                        });
-                        if(!parentId)return;
-                        var outer=document.getElementById(parentId);
-                        if(!outer)return;
-                        if(inner.classList.contains('hidden')){
-                            outer.classList.add('hidden');
-                        }else{
-                            outer.classList.remove('hidden');
+            var panel=document.querySelector('.panel');
+            var handle=document.getElementById('sheetHandle');
+            var strip=document.getElementById('sheetStatusStrip');
+            if(!panel||!handle)return;
+
+            var mobileQuery=window.matchMedia('(max-width: 768px)');
+
+            // Drag state stored on closure
+            var dragStartY=0;
+            var dragStartTransform=0;
+            var isDragging=false;
+            var pointerId=null;
+
+            /* Compute current translateY in px from the panel's transform.
+               Returns 0 when peek (no translation), or ~viewport*0.4 when
+               peek state is active, or ~viewport*0.9 - chrome when
+               collapsed. Falls back to 0 if no transform is set. */
+            function getCurrentTranslateY(){
+                var style=window.getComputedStyle(panel);
+                var matrix=style.transform;
+                if(matrix==='none'||!matrix)return 0;
+                var match=matrix.match(/matrix.*\((.+)\)/);
+                if(!match)return 0;
+                var values=match[1].split(', ');
+                return parseFloat(values[values.length-1])||0;
+            }
+
+            /* Translation values (in px) for each snap state.
+               These mirror the CSS transforms exactly:
+                 peek = translateY(0) → fully visible
+                 collapsed = translateY(50dvh - 74px) → only handle + strip visible
+
+               Computed at drag time from the current viewport so
+               rotation and resize are handled correctly. */
+            function peekTranslate(){
+                return 0;
+            }
+            function collapsedTranslate(){
+                // Mirrors the CSS calc: 50dvh - handle - strip
+                return window.innerHeight*0.5 - 24 - 50;
+            }
+
+            /* Toggle between collapsed and peek on tap. */
+            function togglePeek(){
+                panel.classList.toggle('sheet-peek');
+            }
+
+            function onPointerDown(e){
+                if(!mobileQuery.matches)return;
+                isDragging=true;
+                pointerId=e.pointerId;
+                dragStartY=e.clientY;
+                dragStartTransform=getCurrentTranslateY();
+                panel.classList.add('sheet-dragging');
+                handle.setPointerCapture(pointerId);
+                e.preventDefault();
+            }
+
+            function onPointerMove(e){
+                if(!isDragging||e.pointerId!==pointerId)return;
+                var deltaY=e.clientY-dragStartY;
+                var newTransform=dragStartTransform+deltaY;
+                // Clamp between peek (top) and collapsed (bottom)
+                var minT=peekTranslate();
+                var maxT=collapsedTranslate();
+                if(newTransform<minT)newTransform=minT;
+                if(newTransform>maxT)newTransform=maxT;
+                panel.style.transform='translateY('+newTransform+'px)';
+            }
+
+            function onPointerUp(e){
+                if(!isDragging||e.pointerId!==pointerId)return;
+                isDragging=false;
+                panel.classList.remove('sheet-dragging');
+                handle.releasePointerCapture(pointerId);
+
+                var totalDelta=Math.abs(e.clientY-dragStartY);
+                if(totalDelta<6){
+                    // Tap (negligible movement): toggle states.
+                    panel.style.transform='';
+                    togglePeek();
+                }else{
+                    // Drag: snap to nearest state based on final position.
+                    var finalTransform=getCurrentTranslateY();
+                    var midpoint=(peekTranslate()+collapsedTranslate())/2;
+                    panel.style.transform='';
+                    if(finalTransform<midpoint){
+                        panel.classList.add('sheet-peek');
+                    }else{
+                        panel.classList.remove('sheet-peek');
+                    }
+                }
+                pointerId=null;
+            }
+
+            function onPointerCancel(e){
+                if(!isDragging)return;
+                isDragging=false;
+                panel.classList.remove('sheet-dragging');
+                panel.style.transform='';
+                pointerId=null;
+            }
+
+            function onKeyDown(e){
+                if(!mobileQuery.matches)return;
+                if(e.key==='Enter'||e.key===' '){
+                    e.preventDefault();
+                    togglePeek();
+                }
+            }
+
+            handle.addEventListener('pointerdown',onPointerDown);
+            handle.addEventListener('pointermove',onPointerMove);
+            handle.addEventListener('pointerup',onPointerUp);
+            handle.addEventListener('pointercancel',onPointerCancel);
+            handle.addEventListener('keydown',onKeyDown);
+
+            // Tapping the status strip also expands to peek — gives the
+            // user a larger tap target than just the handle.
+            if(strip){
+                strip.addEventListener('click',function(){
+                    if(!mobileQuery.matches)return;
+                    panel.classList.add('sheet-peek');
+                });
+            }
+
+            /* ----------------------------------------------------------
+               Status strip auto-updater
+
+               Reads accordion section state from the DOM and writes a
+               summary to the collapsed-state strip. The MutationObserver
+               below triggers this whenever any accordion changes, so the
+               strip stays in sync with the existing app.js workflow logic
+               without modifying app.js itself.
+
+               Priority for "what to show":
+               1. The first acc-section with .acc-status-dot.active (current step)
+               2. Otherwise, the first acc-section without .done (next step)
+               3. Otherwise, last completed section + "Ready"
+               ---------------------------------------------------------- */
+            function updateStatusStrip(){
+                if(!strip)return;
+                var ssDot=document.getElementById('ssDot');
+                var ssLabel=document.getElementById('ssLabel');
+                var ssSummary=document.getElementById('ssSummary');
+                if(!ssDot||!ssLabel||!ssSummary)return;
+
+                // Find all visible accordion sections (skip .hidden ones —
+                // mode switching uses .hidden to swap section visibility)
+                var sections=Array.from(document.querySelectorAll('.acc-section'))
+                    .filter(function(s){return !s.classList.contains('hidden')});
+
+                var target=null;
+                var dotState='';
+
+                // Priority 1: active section
+                for(var i=0;i<sections.length;i++){
+                    var dot=sections[i].querySelector('.acc-status-dot');
+                    if(dot&&dot.classList.contains('active')){
+                        target=sections[i];
+                        dotState='active';
+                        break;
+                    }
+                    if(dot&&dot.classList.contains('error')){
+                        target=sections[i];
+                        dotState='error';
+                        break;
+                    }
+                }
+                // Priority 2: first incomplete section
+                if(!target){
+                    for(var i=0;i<sections.length;i++){
+                        var dot=sections[i].querySelector('.acc-status-dot');
+                        if(!dot||!dot.classList.contains('done')){
+                            target=sections[i];
+                            dotState='';
+                            break;
                         }
                     }
+                }
+                // Priority 3: all done — show last section
+                if(!target&&sections.length){
+                    target=sections[sections.length-1];
+                    dotState='done';
+                }
+
+                if(!target)return;
+
+                var titleEl=target.querySelector('.acc-title');
+                var summaryEl=target.querySelector('.acc-summary');
+                var label=titleEl?titleEl.textContent.trim():'Get started';
+                var summary=summaryEl?summaryEl.textContent.trim():'';
+
+                if(!summary){
+                    if(dotState==='active')summary='In progress';
+                    else if(dotState==='error')summary='Action required';
+                    else if(dotState==='done')summary='Complete';
+                    else summary='Tap to begin';
+                }
+
+                ssLabel.textContent=label;
+                ssSummary.textContent=summary;
+                ssDot.className='ss-dot'+(dotState?' '+dotState:'');
+            }
+
+            // Initial render after DOM is ready (give app.js a moment to
+            // populate any initial state)
+            setTimeout(updateStatusStrip,100);
+
+            // Observe ALL accordion sections for class/text changes.
+            // This catches: status-dot updates, summary text changes, and
+            // .hidden being added/removed during mode switches.
+            var observer=new MutationObserver(function(){
+                updateStatusStrip();
+            });
+            document.querySelectorAll('.acc-section').forEach(function(s){
+                observer.observe(s,{
+                    attributes:true,
+                    attributeFilter:['class'],
+                    subtree:true,
+                    childList:true,
+                    characterData:true
                 });
             });
-            pairs.forEach(function(p){
-                var el=document.getElementById(p[0]);
-                if(el)observer.observe(el,{attributes:true,attributeFilter:['class']});
+
+            /* ----------------------------------------------------------
+               Initial state and viewport changes
+               ---------------------------------------------------------- */
+
+            // On mobile load: start in PEEK state (per design decision).
+            // Defer until next frame so the CSS has applied the default
+            // collapsed transform first; then the class addition animates.
+            function setInitialState(){
+                if(mobileQuery.matches){
+                    requestAnimationFrame(function(){
+                        panel.classList.add('sheet-peek');
+                    });
+                }
+            }
+            setInitialState();
+
+            // Auto-expand to peek when user taps a collapsed accordion
+            // header while in collapsed state. Without this, tapping
+            // a section in collapsed would do nothing visible.
+            document.addEventListener('click',function(e){
+                if(!mobileQuery.matches)return;
+                if(panel.classList.contains('sheet-peek'))return;
+                var header=e.target.closest('.acc-header');
+                if(!header)return;
+                // Defer so toggleSection() runs first
+                setTimeout(function(){
+                    panel.classList.add('sheet-peek');
+                },50);
+            });
+
+            // Crossing the breakpoint: clear inline transform so the panel
+            // returns to its appropriate layout cleanly.
+            mobileQuery.addEventListener('change',function(e){
+                panel.style.transform='';
+                if(!e.matches){
+                    // Now desktop: clean state classes
+                    panel.classList.remove('sheet-peek','sheet-dragging');
+                }else{
+                    // Now mobile: start in peek
+                    panel.classList.add('sheet-peek');
+                }
             });
         })();
     </script>
