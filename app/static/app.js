@@ -138,7 +138,43 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
         function addMeasurePoint(latlng){var pt=[latlng.lat,latlng.lng];measurePoints.push(pt);var dot=L.circleMarker(latlng,{radius:4,color:'#ffca00',fillColor:'#ffca00',fillOpacity:1,weight:2}).addTo(map);measureMarkers.push(dot);if(measurePoints.length>1){var prev=measurePoints[measurePoints.length-2],cur=pt;var segDist=haversine(prev,cur);measureTotalDist+=segDist;var line=L.polyline([prev,cur],{color:'#ffca00',weight:2.5,dashArray:'6,6',opacity:0.9}).addTo(map);measureLines.push(line);var mid=[(prev[0]+cur[0])/2,(prev[1]+cur[1])/2];var segLabel=L.marker(mid,{icon:L.divIcon({className:'',html:'<div class="measure-label">'+fmtDist(segDist)+'</div>',iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);measureMarkers.push(segLabel);var totalLabel=L.marker(latlng,{icon:L.divIcon({className:'',html:'<div class="measure-total">Total: '+fmtDist(measureTotalDist)+'</div>',iconSize:[0,0],iconAnchor:[0,0]})}).addTo(map);measureMarkers.push(totalLabel);}}
         document.addEventListener('keydown',function(e){if(e.key==='Escape'&&measureMode){toggleMeasure();}});
         const ippIcon=L.divIcon({className:'',html:'<div style="width:20px;height:20px;background:#ff3333;border:3px solid white;border-radius:50%;box-shadow:0 0 12px rgba(255,51,51,0.6),0 2px 6px rgba(0,0,0,0.4);"></div>',iconSize:[20,20],iconAnchor:[10,10]});
-        function selectMode(mode){currentMode=mode;document.getElementById('splashModal').classList.add('hidden');if(mode==='isochrone'){document.getElementById('modeSubtitle').innerHTML='<span class="mode-badge isochrone">Travel Time</span>';}else{document.getElementById('modeSubtitle').innerHTML='<span class="mode-badge ipp-only">TARR Analysis</span>';}if(window.onModeSelected)window.onModeSelected(mode);}
+        function selectMode(mode){
+            currentMode=mode;
+            document.getElementById('splashModal').classList.add('hidden');
+            // Common style for the info icon wrapper. The icon is an inline SVG
+            // (question mark in rounded square frame), drawn via currentColor so it
+            // inherits text color. Wrapper provides click target, hover affordance,
+            // accessibility (role/tabindex/title).
+            var infoIconBase =
+                'display:inline-flex;align-items:center;justify-content:center;' +
+                'width:24px;height:24px;margin-left:8px;' +
+                'color:var(--text-primary);cursor:pointer;text-transform:none;' +
+                'letter-spacing:0;vertical-align:middle;user-select:none;';
+            // SVG markup for the info icon — question mark inside rounded square frame.
+            // Source: user-provided SVG (noun-question-3542510), converted to use
+            // currentColor so the wrapper's CSS color property drives the icon color.
+            var infoIconSvg =
+                '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 128 128" ' +
+                'fill="currentColor" style="display:block;">' +
+                '<path d="m35.801 23.711c-6.6289 0-12.105 5.4531-12.105 12.082v56.426c0 6.6289 5.4766 12.07 12.105 12.07h56.395c6.6289 0 12.113-5.4453 12.113-12.07l-0.003906-56.426c0-6.6289-5.4844-12.082-12.113-12.082zm0 8.0664h56.395c2.2734 0 4.0469 1.7422 4.0469 4.0117l-0.003907 56.43c0 2.2734-1.7734 4.0117-4.0469 4.0117h-56.391c-2.2734 0-4.0469-1.7422-4.0469-4.0117v-56.426c0-2.2734 1.7734-4.0117 4.0469-4.0117zm27.938 8.0977c-3.6406 0.13672-6.9727 0.94531-9.9492 3.3984-2.3594 2.0234-4.5391 5.1562-4.9336 8.8516 0 1.4531 1.2812 2.6758 3.8477 3.6602 1.3281 0.51172 2.3984 0.76953 3.2109 0.76953 1.375 0.19531 3.0078-1.3711 3.5273-4.1719 0.66016-1.3086 2.4766-2.3477 4.8789-2.25 2.9258 0.066407 4.4648 1.0117 4.7461 4.4297 0.078125 1.8086-1.1094 3.8945-5.0039 5.0039-1.2422 0.34375-2.3945 1.0469-3.4609 2.1172-1.4727 1.4727-1.7227 4.1875-1.543 6.8008 0.34375 1.9922 1.7578 2.8203 5.1328 2.7617 2.4844-0.10156 4.5312-0.10156 5.1406-2.5039 0.085938-0.38672 0.125-0.94141 0.125-1.668 2.4609-0.83203 4.1836-1.8086 6.2891-3.9102 2.1445-2.4961 3.4688-5.2422 3.3984-8.7969 0-3.8516-1.4297-7.2266-4.2969-10.137-2.875-2.9023-6.5781-4.3555-11.109-4.3555zm0.96875 36.254c-6.0117-0.14844-6.8828 1.707-6.6719 6.9258 0 1.7539 0.35938 2.9961 1.0859 3.7227 0.98438 0.89844 2.3945 1.3555 4.2344 1.3555 2.2539-0.0625 4.8203 0.23828 6.0352-2.0547 0.42969-0.85547 0.63672-2.1445 0.63672-3.8555-0.13672-2.9805-0.20703-6.0703-5.3203-6.0898z"/>' +
+                '</svg>';
+            if(mode==='isochrone'){
+                // Travel Time mode: teal badge + info icon that opens the Travel Time modal.
+                document.getElementById('modeSubtitle').innerHTML =
+                    '<span class="mode-badge isochrone">Travel Time</span>' +
+                    '<span role="button" tabindex="0" title="What is Travel Time?" ' +
+                    'onclick="document.getElementById(\'travelTimeInfoModal\').classList.remove(\'hidden\');" ' +
+                    'style="' + infoIconBase + '">' + infoIconSvg + '</span>';
+            } else {
+                // TARR mode: orange badge + info icon that opens the TARR explainer modal.
+                document.getElementById('modeSubtitle').innerHTML =
+                    '<span class="mode-badge ipp-only">TARR Analysis</span>' +
+                    '<span role="button" tabindex="0" title="What is a TARR?" ' +
+                    'onclick="document.getElementById(\'ringInfoModal\').classList.remove(\'hidden\');" ' +
+                    'style="' + infoIconBase + '">' + infoIconSvg + '</span>';
+            }
+            if(window.onModeSelected)window.onModeSelected(mode);
+        }
         function setStatus(t,m){var b=document.getElementById('statusBar'),x=document.getElementById('statusText');b.className='status-bar visible '+t;x.textContent=m;}
         function setIppStatus(t,m){var b=document.getElementById('ippStatusBar'),x=document.getElementById('ippStatusText');b.className='status-bar visible '+t;x.textContent=m;}
         function setAnalysisStatus(t,m){var b=document.getElementById('analysisStatusBar'),x=document.getElementById('analysisStatusText');b.className='status-bar visible '+t;x.textContent=m;}
