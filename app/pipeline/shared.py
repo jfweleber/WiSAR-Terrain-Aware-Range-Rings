@@ -5,7 +5,7 @@
 #               circular imports — submodules import from here instead of
 #               from pipeline/__init__.py.
 # Author:       Jamie F. Weleber
-# Created:      March 2026 - v1.14 (no change)
+# Created:      March 2026
 # ===============================================================================
 
 import tempfile
@@ -78,51 +78,3 @@ def get_bbox_from_ipp(lat, lng, radius_km):
     dlat = radius_km / km_per_deg_lat
     dlng = radius_km / km_per_deg_lng
     return (lng - dlng, lat - dlat, lng + dlng, lat + dlat)
-
-
-def get_bbox_from_segments(segments_geojson, buffer_km):
-    """Compute a bounding box from CalTopo search segment geometries.
-
-    Args:
-        segments_geojson: GeoJSON FeatureCollection with segment polygons
-        buffer_km: Buffer distance around segments in kilometers
-    Returns:
-        Tuple of (west, south, east, north) in decimal degrees
-    """
-    from shapely.geometry import shape
-    from shapely.ops import unary_union
-
-    geometries = []
-    for feature in segments_geojson.get('features', []):
-        try:
-            geom = shape(feature['geometry'])
-            geom = repair_geometry(geom)
-            if geom and not geom.is_empty and geom.is_valid:
-                geometries.append(geom)
-        except Exception:
-            continue
-    if not geometries:
-        raise ValueError("No valid segment geometries found")
-    try:
-        union = unary_union(geometries)
-    except Exception:
-        all_bounds = [g.bounds for g in geometries]
-        min_x = min(b[0] for b in all_bounds)
-        min_y = min(b[1] for b in all_bounds)
-        max_x = max(b[2] for b in all_bounds)
-        max_y = max(b[3] for b in all_bounds)
-        from shapely.geometry import box
-        union = box(min_x, min_y, max_x, max_y)
-    bounds = union.bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    km_per_deg_lat = 111.32
-    km_per_deg_lng = 111.32 * math.cos(math.radians(center_lat))
-    dlat = buffer_km / km_per_deg_lat
-    dlng = buffer_km / km_per_deg_lng
-    max_extent_deg = 50 / km_per_deg_lat
-    width = (bounds[2] - bounds[0]) + 2 * dlng
-    height = (bounds[3] - bounds[1]) + 2 * dlat
-    if width > max_extent_deg or height > max_extent_deg:
-        dlat = min(dlat, (max_extent_deg - (bounds[3] - bounds[1])) / 2)
-        dlng = min(dlng, (max_extent_deg - (bounds[2] - bounds[0])) / 2)
-    return (bounds[0] - dlng, bounds[1] - dlat, bounds[2] + dlng, bounds[3] + dlat)
