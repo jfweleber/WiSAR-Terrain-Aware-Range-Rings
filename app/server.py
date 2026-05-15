@@ -32,11 +32,11 @@ RESULTS_DIR = '/tmp/wisar_results'
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # ============================================================
-# CalTopo API write credentials (CCSO-SAR service account)
+# CalTopo API write credentials (Team service account)
 # ============================================================
-CALTOPO_ACCOUNT_ID = '***REMOVED***'
-CALTOPO_CREDENTIAL_ID = '***REMOVED***'
-CALTOPO_CREDENTIAL_KEY = '***REMOVED***'
+CALTOPO_ACCOUNT_ID = ''
+CALTOPO_CREDENTIAL_ID = ''
+CALTOPO_CREDENTIAL_KEY = ''
 CALTOPO_BASE_URL = 'https://caltopo.com'
 
 def caltopo_sign(method, url_path, expires, payload_string):
