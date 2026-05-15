@@ -1,9 +1,9 @@
 # ===============================================================================
 # Module:       pipeline/outputs.py
-# Purpose:      Probability surfaces, POA (Probability of Area) computation,
-#               TARR contour extraction, and the main analysis orchestrator.
+# Purpose:      Probability surfaces, TARR contour extraction, and the main
+#               analysis orchestrator.
 # Author:       Jamie F. Weleber
-# Created:      March 2026 - v1.14 (no change)
+# Created:      March 2026
 # ===============================================================================
 
 import numpy as np
@@ -13,10 +13,11 @@ import math
 from shapely.geometry import shape
 
 from pipeline.shared import WORK_DIR, repair_geometry
-from pipeline.shared import get_bbox_from_ipp, get_bbox_from_segments
+from pipeline.shared import get_bbox_from_ipp
 from pipeline.downloads import download_dem, download_nlcd, download_osm_features, download_nhd_features
 from pipeline.cost_surface import build_cost_surface
 from pipeline.cost_distance import compute_cost_distance
+from pipeline.jacobs_masks import compute_jacobs_masks
 
 
 # ===============================================================================
@@ -45,137 +46,6 @@ def generate_probability_surface(cost_distance_path, pct_25_km, pct_50_km, pct_7
         dst.write(prob, 1)
     print(f"  Probability surface written.")
     return output_path
-
-def compute_segment_poa(cost_distance_path, segments_geojson, pct_25_km, pct_50_km, pct_75_km):
-    """Compute Probability of Area (POA) for each segment using log-normal distribution.
-    
-    Fits a log-normal distribution to the user's percentile inputs, evaluates
-    the PDF at every cell's cost-distance value, then sums density within
-    each segment polygon to compute POA.
-    """
-    from scipy.stats import lognorm
-    from rasterstats import zonal_stats
-    
-    # Convert km to cost-distance meters
-    p25 = pct_25_km * 1000
-    p50 = pct_50_km * 1000
-    p75 = pct_75_km * 1000
-    
-    # Fit log-normal parameters from percentiles
-    # For log-normal: median = exp(mu), so mu = ln(median)
-    mu = math.log(p50)
-    # sigma from IQR: sigma = (ln(p75) - ln(p25)) / (2 * 0.6745)
-    sigma = (math.log(p75) - math.log(p25)) / (2 * 0.6745)
-    
-    print(f"  Log-normal fit: mu={mu:.4f}, sigma={sigma:.4f}")
-    print(f"  Expected median cost-distance: {math.exp(mu):.0f}m")
-    
-    # Read cost-distance raster
-    with rasterio.open(cost_distance_path) as src:
-        cd = src.read(1).astype(np.float64)
-        transform = src.transform
-        crs = src.crs
-        height, width = cd.shape
-    
-    # Create probability density surface
-    nodata_mask = (cd <= 0) | (cd == -9999) | np.isinf(cd) | np.isnan(cd)
-    cd_clean = np.where(nodata_mask, 1.0, cd)  # avoid log(0)
-    
-    # Log-normal PDF: f(x) = (1/(x*sigma*sqrt(2pi))) * exp(-(ln(x)-mu)^2 / (2*sigma^2))
-    log_cd = np.log(cd_clean)
-    density = (1.0 / (cd_clean * sigma * np.sqrt(2 * np.pi))) * np.exp(-((log_cd - mu)**2) / (2 * sigma**2))
-    density[nodata_mask] = 0.0
-    
-    total_density = float(np.sum(density))
-    if total_density == 0:
-        print("  Warning: total density is zero")
-        return []
-    
-    print(f"  Total probability density sum: {total_density:.2f}")
-    
-    # Write density as temporary raster for zonal stats
-    density_path = os.path.join(WORK_DIR, 'density.tif')
-    profile = {'driver': 'GTiff', 'dtype': 'float64', 'width': width, 'height': height,
-               'count': 1, 'crs': crs, 'transform': transform, 'nodata': 0}
-    with rasterio.open(density_path, 'w', **profile) as dst:
-        dst.write(density, 1)
-    
-    # Calculate raw density sums for each segment
-    results = []
-    features = segments_geojson.get('features', [])
-    
-    for i, feature in enumerate(features):
-        title = feature.get('properties', {}).get('title', f'Segment {i+1}')
-        number = feature.get('properties', {}).get('number', '')
-        res_type = feature.get('properties', {}).get('resourceType', 'GROUND')
-        
-        try:
-            # Repair geometry if invalid
-            from shapely.geometry import mapping as geom_mapping
-            geom = shape(feature['geometry'])
-            geom = repair_geometry(geom)
-            feature = dict(feature)
-            feature['geometry'] = geom_mapping(geom)
-            stats = zonal_stats(
-                feature,
-                density_path,
-                stats=['sum', 'count'],
-                nodata=0
-            )
-            
-            if stats and stats[0]['sum'] is not None:
-                seg_density = float(stats[0]['sum'])
-                seg_cells = int(stats[0]['count'])
-            else:
-                seg_density = 0
-                seg_cells = 0
-            
-            results.append({
-                'title': title,
-                'number': number,
-                'resource_type': res_type,
-                'cells': seg_cells,
-                'density_sum': round(seg_density, 4),
-                'index': i
-            })
-            
-        except Exception as e:
-            print(f"    Error computing POA for {title}: {e}")
-            results.append({
-                'title': title,
-                'number': number,
-                'resource_type': res_type,
-                'cells': 0,
-                'density_sum': 0,
-                'index': i
-            })
-    
-    # Normalize POA across segments (not full raster) so values sum to 100%
-    # This ensures buffer/radius size does not affect POA rankings and
-    # separates the physics-based spatial model from ROW considerations
-    segment_density_total = sum(r['density_sum'] for r in results)
-    
-    if segment_density_total > 0:
-        for r in results:
-            r['poa'] = round((r['density_sum'] / segment_density_total) * 100.0, 2)
-            print(f"    {r['title']}: POA={r['poa']:.2f}%, cells={r['cells']}")
-    else:
-        print("  Warning: total segment density is zero")
-        for r in results:
-            r['poa'] = 0.0
-    
-    print(f"  Segment density total: {segment_density_total:.2f} (of {total_density:.2f} raster total)")
-    
-    # Sort by POA descending
-    results.sort(key=lambda x: x['poa'], reverse=True)
-    
-    # Calculate cumulative POA
-    cumulative = 0
-    for r in results:
-        cumulative += r['poa']
-        r['cumulative_poa'] = round(cumulative, 2)
-    
-    return results
 
 def round_coords(geom_dict, precision=5):
     """Round all coordinates in a GeoJSON geometry dict to the given precision.
@@ -269,25 +139,268 @@ def extract_contour_polygons(cost_distance_path, pct_25_km, pct_50_km, pct_75_km
     
     return {'type': 'FeatureCollection', 'features': contours}
 
-def run_analysis(ipp_lat, ipp_lng, pct_25_km, pct_50_km, pct_75_km,
-                 mode='ipp', radius_km=5.0, buffer_km=2.0, segments_geojson=None):
+# ===============================================================================
+# STEP 3: Isochrone extraction — time-based reachability contours
+# ===============================================================================
+
+# Default isochrone color ramp — progresses from cool (near IPP, short travel
+# time) to warm (far from IPP, long travel time). The 6-color sequence covers
+# the most operationally useful time horizons for WiSAR: 1h through 24h.
+# Colors are chosen to remain distinguishable on both satellite and topo basemaps.
+ISOCHRONE_COLORS = [
+    '#00bcd4',   # 1h  — cyan (closest reachable area)
+    '#4caf50',   # 2h  — green
+    '#ffeb3b',   # 4h  — yellow
+    '#ff9800',   # 8h  — orange
+    '#f44336',   # 12h — red
+    '#9c27b0',   # 24h — purple (outer containment boundary)
+]
+
+
+def extract_isochrone_polygons(cost_distance_path, base_speed_kmh, time_intervals_hours):
+    """Extract time-based reachability contours (isochrones) as GeoJSON polygons.
+
+    Converts the existing cost-distance raster (in terrain-equivalent meters)
+    to travel time using the coordinator's specified flat-ground travel speed,
+    then extracts vector polygons at each requested time interval. This is
+    conceptually identical to Doherty et al.'s (2014) mobility model — the
+    cost-distance surface represents minimum travel time under terrain friction,
+    so each isochrone is the outer bound of where a subject *could* physically
+    be after N hours at the given base speed.
+
+    The conversion is: hours = cost_distance_meters / (speed_km/h * 1000)
+
+    This works because the Dijkstra accumulates cost in terrain-equivalent
+    meters — on flat ground with friction 1.0, the cost equals the actual
+    surface distance in meters. Dividing by the user's flat-ground speed
+    (converted to m/h) yields hours of travel time.
+
+    Args:
+        cost_distance_path: Path to cost-distance GeoTIFF (values in cost-meters)
+        base_speed_kmh: Flat-ground travel speed in km/h (e.g., 1.61 for 1 mph)
+        time_intervals_hours: List of time thresholds in hours (e.g., [1, 2, 4, 8])
+    Returns:
+        GeoJSON FeatureCollection with one polygon per isochrone interval
+    """
+    from rasterio.features import shapes
+    from shapely.geometry import shape, mapping
+    from shapely.ops import unary_union
+
+    # Convert speed to meters per hour for unit compatibility with cost-distance
+    speed_m_per_h = base_speed_kmh * 1000.0
+
+    with rasterio.open(cost_distance_path) as src:
+        cd = src.read(1).astype(np.float64)
+        transform = src.transform
+
+    nodata_mask = (cd <= 0) | (cd == -9999) | np.isinf(cd) | np.isnan(cd)
+
+    # Convert cost-distance (meters) to travel time (hours).
+    # Every cell now holds the minimum hours to reach it from the IPP
+    # at the given base speed, modulated by terrain and land cover friction.
+    travel_time = np.where(nodata_mask, np.nan, cd / speed_m_per_h)
+
+    # Sort intervals so contours are extracted from smallest to largest
+    sorted_intervals = sorted(time_intervals_hours)
+
+    # Assign colors from the ramp, cycling if more intervals than colors
+    contours = []
+    for i, hours in enumerate(sorted_intervals):
+        color = ISOCHRONE_COLORS[i % len(ISOCHRONE_COLORS)]
+        # Label format: "1h", "2h", "4h", etc. — concise for map legends
+        label = f"{hours}h"
+
+        # Binary mask: 1 = reachable within this time threshold
+        binary = np.zeros_like(cd, dtype=np.uint8)
+        binary[(travel_time <= hours) & (~nodata_mask)] = 1
+
+        try:
+            polys = []
+            for geom, val in shapes(binary, transform=transform):
+                if val == 1:
+                    poly = shape(geom)
+                    if poly.is_valid and not poly.is_empty:
+                        polys.append(poly)
+
+            if polys:
+                merged = unary_union(polys)
+                # Keep only the largest contiguous polygon — small islands
+                # are typically artifacts from narrow trail corridors that
+                # briefly dip below the time threshold
+                if merged.geom_type == 'MultiPolygon':
+                    largest = max(merged.geoms, key=lambda g: g.area)
+                else:
+                    largest = merged
+
+                largest = repair_geometry(largest)
+                # Smooth jagged raster edges: buffer out then back in.
+                # Same approach used for TARR contours in extract_contour_polygons.
+                try:
+                    smoothed = largest.buffer(0.001).buffer(-0.0008)
+                    smoothed = repair_geometry(smoothed)
+                    if smoothed is None or smoothed.is_empty:
+                        smoothed = largest
+                except Exception:
+                    smoothed = largest
+                # Simplify to reduce vertex count for CalTopo export and KML
+                simplified = smoothed.simplify(0.0001, preserve_topology=True)
+                if simplified.is_empty or not simplified.is_valid:
+                    simplified = largest.simplify(0.0001, preserve_topology=True)
+
+                centroid = simplified.centroid
+
+                contours.append({
+                    'type': 'Feature',
+                    'properties': {
+                        'hours': hours,
+                        'label': label,
+                        # Store the cost-distance threshold (meters) that corresponds
+                        # to this time interval, useful for debugging and metadata
+                        'threshold_m': hours * speed_m_per_h,
+                        'color': color,
+                        'label_lat': round(centroid.y, 5),
+                        'label_lng': round(centroid.x, 5),
+                    },
+                    'geometry': round_coords(mapping(simplified))
+                })
+                print(f"    {label} isochrone: {len(simplified.exterior.coords)} vertices")
+            else:
+                print(f"    {label} isochrone: no polygons found (speed may be too slow or radius too small)")
+        except Exception as e:
+            print(f"    {label} isochrone error: {e}")
+
+    return {'type': 'FeatureCollection', 'features': contours}
+
+
+# ===============================================================================
+# STEP 4: Isochrone analysis orchestrator
+# ===============================================================================
+
+def run_isochrone_analysis(ipp_lat, ipp_lng, base_speed_kmh, time_intervals_hours,
+                          radius_km=10.0):
+    """Run the full analysis pipeline for time-based isochrone mode.
+
+    This is the second mode alongside TARR Analysis. It reuses the same
+    data downloads, cost surface, and
+    cost-distance computation — the only difference is how the output
+    is interpreted. Instead of thresholding at Koester percentile distances,
+    we convert cost-distance to travel time using the coordinator's specified
+    base speed and extract isochrone polygons at requested time intervals.
+
+    The coordinator supplies a flat-ground travel speed (e.g., 1 mph for an
+    impaired subject) and time horizons (e.g., 1h, 2h, 4h). The output
+    shows where the subject could physically be after each time period,
+    accounting for terrain, trails, land cover, and slope — the same
+    anisotropic cost model used for TARRs.
+
+    Args:
+        ipp_lat, ipp_lng: IPP coordinates in decimal degrees (WGS84)
+        base_speed_kmh: Assumed flat-ground travel speed in km/h
+        time_intervals_hours: List of time thresholds in hours
+        radius_km: Analysis radius from IPP in km (default 10 km —
+                   larger than TARR default because slow speeds over
+                   long time horizons can cover surprising distance
+                   along trails)
+    Returns:
+        Dict with paths to all intermediate files, contour GeoJSON, and bbox
+    """
     print("=" * 60)
-    print("WiSAR Analysis Pipeline")
+    print("WiSAR Isochrone Analysis Pipeline")
+    print(f"  Base speed: {base_speed_kmh:.2f} km/h ({base_speed_kmh / 1.609:.2f} mph)")
+    print(f"  Time intervals: {time_intervals_hours}")
+    print("=" * 60)
+
+    # --- Estimate required radius from speed and max time interval ---
+    # The farthest an isochrone can extend is speed * max_hours on flat,
+    # frictionless terrain. We add a 2 km pad for edge effects in the
+    # cost-distance computation. This mirrors the TARR pipeline's
+    # p75 + 2 km rule, keeping bbox sizing consistent across both modes.
+    max_hours = max(time_intervals_hours)
+    estimated_reach_km = base_speed_kmh * max_hours + 2.0
+    # Use the larger of user-specified radius or estimated reach
+    effective_radius = max(radius_km, estimated_reach_km)
+    print(f"  Estimated max reach: {estimated_reach_km:.1f} km")
+    print(f"  Effective analysis radius: {effective_radius:.1f} km")
+
+    print("\n[1/7] Computing bounding box...")
+    bbox = get_bbox_from_ipp(ipp_lat, ipp_lng, effective_radius)
+    print(f"  Bbox: W={bbox[0]:.4f}, S={bbox[1]:.4f}, E={bbox[2]:.4f}, N={bbox[3]:.4f}")
+
+    print("\n[2/7] Downloading DEM...")
+    dem_path = download_dem(bbox)
+
+    print("\n[3/7] Downloading NLCD...")
+    nlcd_path = download_nlcd(bbox)
+
+    print("\n[4/7] Downloading OSM features...")
+    osm_features = download_osm_features(bbox)
+    # Strip warnings from the osm_features dict so build_cost_surface sees
+    # only the expected 'trails'/'roads'/'waterways'/'powerlines' keys.
+    # The warnings are threaded up to the server response for the UI.
+    osm_warnings = osm_features.pop('_warnings', [])
+
+    print("\n[5/7] Downloading NHD hydrology...")
+    nhd_features = download_nhd_features(bbox)
+
+    print("\n[6/7] Building cost surface...")
+    cost_path = build_cost_surface(dem_path, nlcd_path, osm_features, nhd_features=nhd_features)
+
+    print("\n[7/7] Computing cost-distance...")
+    cd_path = compute_cost_distance(cost_path, ipp_lat, ipp_lng, dem_path)
+
+    # --- Compute Jacobs terrain-attractor masks (visualization layer) ---
+    # Same hook as TARR mode — the Pure heatmap renders underneath the
+    # isochrone polygons, so Travel Time analyses also need the masks.
+    # See run_analysis() for rationale on the try/except wrapper.
+    jacobs_masks_path = None
+    try:
+        print("\n[8] Computing Jacobs terrain-attractor masks...")
+        jacobs_masks_path = compute_jacobs_masks(
+            cost_distance_path=cd_path,
+            dem_path=dem_path,
+            osm_features=osm_features,
+            nhd_features=nhd_features,
+        )
+    except Exception as e:
+        print(f"  Jacobs mask computation failed (non-fatal): {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Extract isochrone polygons — no probability surface needed for this mode
+    # since we're showing reachability, not Koester-based likelihood
+    print("\n[9] Extracting isochrone polygons...")
+    isochrone_geojson = extract_isochrone_polygons(cd_path, base_speed_kmh, time_intervals_hours)
+
+    print("\nIsochrone analysis complete.")
+    return {
+        'bbox': bbox,
+        'dem_path': dem_path,
+        'nlcd_path': nlcd_path,
+        'cost_surface_path': cost_path,
+        'cost_distance_path': cd_path,
+        # No probability_path — isochrone mode doesn't use Koester percentiles
+        'probability_path': None,
+        'work_dir': WORK_DIR,
+        'contour_geojson': isochrone_geojson,
+        'isochrone_mode': True,
+        'base_speed_kmh': base_speed_kmh,
+        'time_intervals_hours': time_intervals_hours,
+        'warnings': osm_warnings,
+        # Path to the 5-band Jacobs attractor masks GeoTIFF (see run_analysis)
+        'jacobs_masks_path': jacobs_masks_path,
+    }
+
+
+# ===============================================================================
+# STEP 4: TARR analysis orchestrator
+# ===============================================================================
+
+def run_analysis(ipp_lat, ipp_lng, pct_25_km, pct_50_km, pct_75_km, radius_km=5.0):
+    print("=" * 60)
+    print("WiSAR TARR Analysis Pipeline")
     print("=" * 60)
     print("\n[1/7] Computing bounding box...")
-    if mode == 'caltopo' and segments_geojson:
-        # Union of two extents to ensure full coverage:
-        #   1. Segment extent + 1 km (covers all search segments)
-        #   2. IPP + calibrated p75 + 1 km (covers full TARR reach)
-        seg_bbox = get_bbox_from_segments(segments_geojson, buffer_km)
-        ipp_radius_km = pct_75_km + 1.0
-        ipp_bbox = get_bbox_from_ipp(ipp_lat, ipp_lng, ipp_radius_km)
-        bbox = (min(seg_bbox[0], ipp_bbox[0]), min(seg_bbox[1], ipp_bbox[1]),
-                max(seg_bbox[2], ipp_bbox[2]), max(seg_bbox[3], ipp_bbox[3]))
-        print(f"  Segment bbox: W={seg_bbox[0]:.4f}, S={seg_bbox[1]:.4f}, E={seg_bbox[2]:.4f}, N={seg_bbox[3]:.4f}")
-        print(f"  IPP+p75 bbox: W={ipp_bbox[0]:.4f}, S={ipp_bbox[1]:.4f}, E={ipp_bbox[2]:.4f}, N={ipp_bbox[3]:.4f}")
-    else:
-        bbox = get_bbox_from_ipp(ipp_lat, ipp_lng, radius_km)
+    bbox = get_bbox_from_ipp(ipp_lat, ipp_lng, radius_km)
     print(f"  Bbox: W={bbox[0]:.4f}, S={bbox[1]:.4f}, E={bbox[2]:.4f}, N={bbox[3]:.4f}")
     print("\n[2/7] Downloading DEM...")
     dem_path = download_dem(bbox)
@@ -295,36 +408,52 @@ def run_analysis(ipp_lat, ipp_lng, pct_25_km, pct_50_km, pct_75_km,
     nlcd_path = download_nlcd(bbox)
     print("\n[4/7] Downloading OSM features...")
     osm_features = download_osm_features(bbox)
+    # Strip warnings from the osm_features dict before passing it into
+    # build_cost_surface (which doesn't expect a '_warnings' key). The
+    # warnings are threaded up to the server response so the UI can
+    # surface them to the SAR coordinator.
+    osm_warnings = osm_features.pop('_warnings', [])
     print("\n[5/7] Downloading NHD hydrology...")
     nhd_features = download_nhd_features(bbox)
-    
     print("\n[6/7] Building cost surface...")
     cost_path = build_cost_surface(dem_path, nlcd_path, osm_features, nhd_features=nhd_features)
-    print("\n[7/8] Computing cost-distance...")
+    print("\n[7/7] Computing cost-distance...")
     cd_path = compute_cost_distance(cost_path, ipp_lat, ipp_lng, dem_path)
-    if pct_25_km > 0 and pct_50_km > 0 and pct_75_km > 0:
-        print("\n[8/8] Generating probability surface...")
-        prob_path = generate_probability_surface(cd_path, pct_25_km, pct_50_km, pct_75_km)
-    else:
-        print("\n[8/8] Skipping probability surface (no percentiles provided).")
-        prob_path = None
-    print("\nAnalysis complete.")
-    # Extract contour polygons as GeoJSON if percentiles provided
-    contour_geojson = None
-    if pct_25_km > 0 and pct_50_km > 0 and pct_75_km > 0:
-        print("\n[8] Extracting contour polygons...")
-        contour_geojson = extract_contour_polygons(cd_path, pct_25_km, pct_50_km, pct_75_km)
-    
-    # Compute segment POA if we have both segments and percentiles
-    poa_results = []
-    if segments_geojson and pct_25_km > 0 and pct_50_km > 0 and pct_75_km > 0:
-        print("\n[9] Computing segment POA rankings...")
-        poa_results = compute_segment_poa(cd_path, segments_geojson, pct_25_km, pct_50_km, pct_75_km)
-    
+
+    # --- Compute Jacobs terrain-attractor masks (visualization layer) ---
+    # The Pure-heatmap renderer in server.py uses these masks to color each
+    # pixel by its strongest terrain attractor signal per Jacobs (2015).
+    # Wrapped in try/except so a mask-computation failure (missing NHD,
+    # corrupt DEM) doesn't kill the whole analysis; the heatmap render
+    # endpoint gracefully degrades to a cold surface if jacobs_masks_path
+    # ends up None.
+    jacobs_masks_path = None
+    try:
+        print("\n[8/8] Computing Jacobs terrain-attractor masks...")
+        jacobs_masks_path = compute_jacobs_masks(
+            cost_distance_path=cd_path,
+            dem_path=dem_path,
+            osm_features=osm_features,
+            nhd_features=nhd_features,
+        )
+    except Exception as e:
+        print(f"  Jacobs mask computation failed (non-fatal): {e}")
+        import traceback
+        traceback.print_exc()
+
+    print("\n[9] Generating probability surface...")
+    prob_path = generate_probability_surface(cd_path, pct_25_km, pct_50_km, pct_75_km)
+    print("\n[10] Extracting TARR contour polygons...")
+    contour_geojson = extract_contour_polygons(cd_path, pct_25_km, pct_50_km, pct_75_km)
+    print("\nTARR analysis complete.")
     return {
         'bbox': bbox, 'dem_path': dem_path, 'nlcd_path': nlcd_path,
         'cost_surface_path': cost_path, 'cost_distance_path': cd_path,
         'probability_path': prob_path, 'work_dir': WORK_DIR,
-        'poa_results': poa_results,
         'contour_geojson': contour_geojson,
+        'warnings': osm_warnings,
+        # Path to the 5-band Jacobs attractor masks GeoTIFF used by the
+        # heatmap renderer. May be None if mask computation failed; the
+        # renderer handles that gracefully (cold surface).
+        'jacobs_masks_path': jacobs_masks_path,
     }
