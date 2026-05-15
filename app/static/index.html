@@ -439,11 +439,13 @@
                     <span class="option-icon">&#127919;</span>
                     <div class="option-title">TARR Analysis</div>
                     <div class="option-desc">Generate Terrain-Aware Range Rings from an IPP using a Lost Person Behavior subject profile. Exports to CalTopo, KML, and GeoJSON.</div>
+                    <a href="#" onclick="event.stopPropagation();document.getElementById('ringInfoModal').classList.remove('hidden');return false;" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--accent);text-decoration:underline;">What&rsquo;s a TARR?</a>
                 </div>
                 <div class="modal-option" onclick="selectMode('isochrone')">
                     <span class="option-icon">&#128339;</span>
                     <div class="option-title">Travel Time</div>
                     <div class="option-desc">Model where a subject could reach over time at a given travel speed. No LPB profile needed. Exports to CalTopo, KML, and GeoJSON.</div>
+                    <a href="#" onclick="event.stopPropagation();document.getElementById('travelTimeInfoModal').classList.remove('hidden');return false;" style="display:inline-block;margin-top:10px;font-size:12px;color:#00bcd4;text-decoration:underline;">What&rsquo;s Travel Time?</a>
                 </div>
             </div>
             <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);"><b><u>Note</u></b>: This tool generates spatial probability estimates based on terrain, land cover, and modeled travel behavior from the IPP. These outputs are intended as one input among many in the search planning process and do not replace the judgment of search planners, investigators, or incident command staff.</p>
@@ -754,7 +756,7 @@
                 <p style="font-size:12px;color:var(--text-secondary);">Jamie Weleber, Coconino County Sheriff's Search &amp; Rescue<br><a href="https://sar.weleber.net" style="color:var(--accent);">https://sar.weleber.net</a></p>
             </div>
 
-            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: May 15, 2026 | Version 1.15</p>
+            <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: May 04, 2026 | Version 1.14</p>
 
             <div style="text-align:center;">
                 <button onclick="document.getElementById('metadataModal').classList.add('hidden');" style="padding:10px 32px;background:var(--accent);color:white;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Close</button>
@@ -889,7 +891,7 @@
                     <text x="270" y="72" font-family="inherit" font-size="11" fill="#a08a62" text-anchor="middle">Steep hill</text>
                     <circle cx="100" cy="180" r="7" fill="#e24b4a" stroke="white" stroke-width="2"/>
                     <text x="100" y="205" font-family="inherit" font-size="12" fill="#e24b4a" text-anchor="middle" font-weight="600">IPP</text>
-                    <path d="M100 180 L190 180 L210 150 L230 120 L250 95 L270 85 L290 95 L310 120 L330 150 L350 180 L410 180" fill="none" stroke="#ffca00" stroke-width="2" stroke-dasharray="6 3"/>
+                    <path d="M 100 180 Q 145 180 190 120 Q 230 80 270 80 Q 310 80 350 120 Q 380 152 410 180" fill="none" stroke="#ffca00" stroke-width="2" stroke-dasharray="6 3"/>
                     <circle cx="410" cy="180" r="5" fill="#ffca00" stroke="white" stroke-width="1.5"/>
                     <text x="255" y="200" font-family="inherit" font-size="11" fill="#ffca00" text-anchor="middle">2.5 km of string going over the hill</text>
                     <line x1="100" y1="168" x2="410" y2="168" stroke="#999" stroke-width="0.5" stroke-dasharray="4 4"/>
@@ -903,26 +905,47 @@
                 <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">This tool does that string calculation for every direction simultaneously. Using elevation data, land cover, and trail networks, it computes the actual travel cost from the IPP to every point in the search area.</p>
                 <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">The percentile rings then follow the contours of equal travel cost instead of equal straight-line distance. They stretch along trails and valleys where a person can travel easily, and compress against steep terrain, dense forest, and water barriers.</p>
                 <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px;">The result is a more realistic picture of where a lost person could actually reach, accounting for the terrain they'd have to navigate.</p>
-                <svg width="100%" viewBox="0 0 500 340" style="display:block;margin:0 auto;">
-                    <rect x="20" y="10" width="460" height="280" rx="4" fill="#3a5a2a" opacity="0.15"/>
-                    <rect x="320" y="30" width="140" height="240" rx="4" fill="#4a7a3a" opacity="0.2"/>
-                    <text x="390" y="50" font-family="inherit" font-size="11" fill="#5a8a4a" text-anchor="middle">Dense forest</text>
-                    <path d="M60 160 Q140 160 170 120 Q200 90 230 90 Q260 90 290 120 Q320 160 380 160" fill="#8a7252" opacity="0.15" stroke="#8a7252" stroke-width="1"/>
-                    <text x="230" y="84" font-family="inherit" font-size="11" fill="#8a7252" text-anchor="middle">Ridge</text>
-                    <rect x="140" y="210" width="120" height="16" rx="3" fill="#888" opacity="0.25"/>
-                    <line x1="140" y1="218" x2="260" y2="218" stroke="#aaa" stroke-width="1.5"/>
-                    <text x="200" y="216" font-family="inherit" font-size="10" fill="#aaa" text-anchor="middle">Trail</text>
-                    <circle cx="230" cy="170" r="7" fill="#e24b4a" stroke="white" stroke-width="2"/>
-                    <text x="230" y="195" font-family="inherit" font-size="12" fill="#e24b4a" text-anchor="middle" font-weight="600">IPP</text>
-                    <circle cx="230" cy="170" r="110" fill="none" stroke="#aaa" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.6"/>
-                    <text x="348" y="168" font-family="inherit" font-size="10" fill="#aaa">Euclidean</text>
-                    <path d="M230 92 Q200 90 175 102 Q148 125 138 158 Q132 182 135 210 Q142 242 160 258 Q178 268 205 273 Q230 276 255 270 Q278 260 292 245 Q302 228 300 208 Q296 185 288 172 Q272 152 258 135 Q245 115 230 92 Z" fill="none" stroke="#ffca00" stroke-width="2.5"/>
-                    <text x="100" y="215" font-family="inherit" font-size="10" fill="#ffca00" text-anchor="end">Compressed</text>
-                    <text x="100" y="228" font-family="inherit" font-size="10" fill="#ffca00" text-anchor="end">(steep slope)</text>
-                    <text x="200" y="308" font-family="inherit" font-size="10" fill="#ffca00" text-anchor="middle">Contracts less (trail)</text>
-                    <text x="365" y="215" font-family="inherit" font-size="10" fill="#ffca00">Compressed</text>
-                    <text x="365" y="228" font-family="inherit" font-size="10" fill="#ffca00">(dense forest)</text>
-                    <text x="250" y="335" font-family="inherit" font-size="11" fill="#999" text-anchor="middle">Gold = Terrain-Aware Range Ring (TARR) | Gray dashed = traditional Euclidean ring</text>
+                <svg width="100%" viewBox="0 0 500 300" style="display:block;margin:0 auto;">
+                    <rect x="20" y="10" width="460" height="260" rx="4" fill="#3a5a2a" opacity="0.15"/>
+                    <text x="40" y="30" font-family="inherit" font-size="11" fill="#7a9a6a">Terrain with a hill, a trail, and a river</text>
+
+                    <!-- River along the bottom acting as barrier -->
+                    <path d="M 20 250 Q 100 245 180 252 Q 260 258 340 248 Q 410 240 480 245" stroke="#4a5a8a" stroke-width="6" fill="none" opacity="0.7"/>
+                    <text x="35" y="270" font-family="inherit" font-size="10" fill="#4a5a8a" font-style="italic">river (barrier)</text>
+
+                    <!-- Hill as nested topographic contour ellipses, centered above IPP -->
+                    <ellipse cx="250" cy="95" rx="80" ry="50" fill="#8a7050" opacity="0.18"/>
+                    <ellipse cx="250" cy="95" rx="80" ry="50" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="250" cy="95" rx="55" ry="35" fill="#8a7050" opacity="0.18"/>
+                    <ellipse cx="250" cy="95" rx="55" ry="35" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="250" cy="95" rx="32" ry="20" fill="#8a7050" opacity="0.2"/>
+                    <ellipse cx="250" cy="95" rx="32" ry="20" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="250" cy="95" rx="12" ry="8" fill="#8a7050" opacity="0.3"/>
+                    <ellipse cx="250" cy="95" rx="12" ry="8" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.7"/>
+                    <text x="250" y="42" font-family="inherit" font-size="10" fill="#8a7050" text-anchor="middle" font-style="italic">hill</text>
+
+                    <!-- Horizontal trail through IPP -->
+                    <path d="M 30 150 L 470 150" stroke="#a08060" stroke-width="2" stroke-dasharray="6 3"/>
+                    <text x="40" y="142" font-family="inherit" font-size="10" fill="#a08060" font-style="italic">trail</text>
+
+                    <!-- Traditional Euclidean p50 ring for comparison (sized to match the p50 TARR's east extent along the trail) -->
+                    <circle cx="250" cy="150" r="130" fill="none" stroke="#bbb" stroke-width="1.8" stroke-dasharray="6 4" opacity="0.7"/>
+                    <text x="455" y="55" font-family="inherit" font-size="11" fill="#bbb" text-anchor="end" font-style="italic">traditional 50% ring</text>
+                    <line x1="395" y1="60" x2="365" y2="80" stroke="#bbb" stroke-width="0.8" opacity="0.6"/>
+
+                    <!-- TARR rings: orange/gold gradient, bulging east-west along trail, pinching over hill, tight against river -->
+                    <path d="M 180 150 Q 180 120 215 120 Q 235 122 245 132 Q 250 138 255 138 Q 260 138 265 132 Q 275 122 295 120 Q 320 120 320 150 Q 320 195 280 220 Q 250 220 220 220 Q 180 195 180 150 Z" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+                    <path d="M 120 150 Q 130 100 175 95 Q 215 92 230 108 Q 240 118 248 122 Q 253 124 257 124 Q 263 124 268 122 Q 275 118 285 108 Q 305 92 350 95 Q 380 100 380 150 Q 375 205 310 230 Q 250 235 200 230 Q 130 205 120 150 Z" fill="none" stroke="#ffca00" stroke-width="2.5"/>
+                    <path d="M 80 150 Q 80 80 145 70 Q 200 65 220 90 Q 232 105 245 112 Q 252 116 258 116 Q 267 116 275 112 Q 290 105 305 90 Q 330 65 390 70 Q 430 80 430 150 Q 425 215 320 240 Q 250 244 175 240 Q 80 215 80 150 Z" fill="none" stroke="#fde68a" stroke-width="2.5"/>
+
+                    <!-- IPP marker on top -->
+                    <circle cx="250" cy="150" r="7" fill="#e24b4a" stroke="white" stroke-width="2"/>
+                    <text x="250" y="170" font-family="inherit" font-size="11" fill="#e24b4a" text-anchor="middle" font-weight="600">IPP</text>
+
+                    <!-- Percentile labels below the trail so they don't sit on the dashed line -->
+                    <text x="335" y="168" font-family="inherit" font-size="11" fill="#f59e0b" font-weight="600">25%</text>
+                    <text x="395" y="168" font-family="inherit" font-size="11" fill="#ffca00" font-weight="600">50%</text>
+                    <text x="445" y="168" font-family="inherit" font-size="11" fill="#fde68a" font-weight="600">75%</text>
                 </svg>
             </div>
 
@@ -954,6 +977,164 @@
 
             <div style="text-align:center;margin-top:16px;">
                 <button onclick="document.getElementById('ringInfoModal').classList.add('hidden');" style="padding:10px 32px;background:var(--accent);color:white;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Got it</button>
+            </div>
+        </div>
+    </div>
+    <!-- ============================================================
+         TRAVEL TIME EXPLAINER MODAL — Educational content
+
+         Three-step visual explanation of how Travel Time isochrones
+         differ from naive "speed times time" reach estimates. Same
+         pedagogical structure as the TARR modal:
+           1. The intuitive (wrong) answer — speed × time
+           2. Why terrain breaks that — friction accumulates per cell
+           3. The result — isochrones that bulge along trails, compress
+              against slopes and barriers
+
+         Hand-drawn SVGs match the TARR modal's visual style.
+         ============================================================ -->
+    <div class="modal-overlay hidden" id="travelTimeInfoModal" onclick="if(event.target===this)this.classList.add('hidden');">
+        <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;text-align:left;padding:32px;">
+            <h2 style="text-align:center;font-size:20px;margin-bottom:4px;">Understanding Travel Time analysis</h2>
+            <p style="text-align:center;font-size:13px;color:var(--text-muted);margin-bottom:24px;">How the WiSAR tool models reachability over time, beyond simple speed times distance</p>
+
+            <div style="background:var(--bg-input);border-radius:8px;padding:20px;margin-bottom:20px;">
+                <h3 style="font-size:15px;color:#00bcd4;margin-bottom:8px;">1. The simple answer</h3>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">"If someone walks at 2 mph for 4 hours, they could be up to 8 miles away." That's the intuitive Travel Time estimate, and it traces a perfect circle of 8 miles around the IPP.</p>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px;">It assumes constant flat-ground speed in every direction. On a hike across open prairie, that's roughly right. On real terrain, it's almost never right.</p>
+                <svg width="100%" viewBox="0 0 500 300" style="display:block;margin:0 auto;">
+                    <rect x="20" y="10" width="460" height="260" rx="4" fill="#3a5a2a" opacity="0.15"/>
+                    <text x="40" y="35" font-family="inherit" font-size="11" fill="#7a9a6a">Flat, open prairie</text>
+                    <circle cx="250" cy="150" r="100" fill="none" stroke="#00bcd4" stroke-width="2" stroke-dasharray="8 4"/>
+                    <circle cx="250" cy="150" r="80" fill="none" stroke="#5fd4e0" stroke-width="2" stroke-dasharray="8 4"/>
+                    <circle cx="250" cy="150" r="55" fill="none" stroke="#9beae8" stroke-width="2" stroke-dasharray="8 4"/>
+                    <circle cx="250" cy="150" r="7" fill="#e24b4a" stroke="white" stroke-width="2"/>
+                    <text x="250" y="175" font-family="inherit" font-size="12" fill="#e24b4a" text-anchor="middle" font-weight="600">IPP</text>
+                    <text x="360" y="155" font-family="inherit" font-size="11" fill="#00bcd4" font-weight="600">4 hr</text>
+                    <text x="340" y="135" font-family="inherit" font-size="11" fill="#5fd4e0" font-weight="600">3 hr</text>
+                    <text x="315" y="118" font-family="inherit" font-size="11" fill="#9beae8" font-weight="600">2 hr</text>
+                </svg>
+            </div>
+
+            <div style="background:var(--bg-input);border-radius:8px;padding:20px;margin-bottom:20px;">
+                <h3 style="font-size:15px;color:#00bcd4;margin-bottom:8px;">2. Time accumulates per step</h3>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">Each 30-meter step a person takes consumes some amount of time. On flat trail, it's a few seconds. Up a steep slope, the same 30 meters might take a minute. Through dense brush, even longer. Across a river, much longer or impossible.</p>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px;">The tool walks outward from the IPP step by step, accumulating time per cell based on local terrain. Some directions burn time fast (climbing a cliff). Other directions barely cost any time (cruising down a trail).</p>
+                <svg width="100%" viewBox="0 0 500 240" style="display:block;margin:0 auto;">
+                    <rect x="20" y="10" width="460" height="220" rx="4" fill="#1a1d23"/>
+                    <text x="40" y="30" font-family="inherit" font-size="11" fill="#7a9a6a">Same elapsed time, different distances reached</text>
+
+                    <!-- Meadow zone (left half) -->
+                    <rect x="40" y="50" width="200" height="160" rx="6" fill="#5a8a4a" opacity="0.35"/>
+                    <text x="140" y="70" font-family="inherit" font-size="13" fill="#a8d098" text-anchor="middle" font-weight="600">Flat meadow</text>
+
+                    <!-- Hill zone (right half) - nested elevation contour ellipses -->
+                    <ellipse cx="370" cy="130" rx="100" ry="80" fill="#8a7050" opacity="0.3"/>
+                    <ellipse cx="370" cy="130" rx="100" ry="80" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="370" cy="130" rx="70" ry="55" fill="#8a7050" opacity="0.35"/>
+                    <ellipse cx="370" cy="130" rx="70" ry="55" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="370" cy="130" rx="42" ry="32" fill="#8a7050" opacity="0.4"/>
+                    <ellipse cx="370" cy="130" rx="42" ry="32" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="370" cy="130" rx="18" ry="14" fill="#8a7050" opacity="0.5"/>
+                    <ellipse cx="370" cy="130" rx="18" ry="14" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.7"/>
+                    <text x="370" y="65" font-family="inherit" font-size="13" fill="#c4a378" text-anchor="middle" font-weight="600">Hill</text>
+
+                    <!-- Meadow path: long, gentle wave westward across flat ground -->
+                    <path d="M 240 130 Q 200 125 170 130 Q 130 138 100 130 Q 80 125 60 130" stroke="#22c55e" stroke-width="2.5" fill="none"/>
+                    <line x1="205" y1="123" x2="205" y2="133" stroke="#22c55e" stroke-width="2"/>
+                    <line x1="170" y1="124" x2="170" y2="136" stroke="#22c55e" stroke-width="2"/>
+                    <line x1="135" y1="131" x2="135" y2="143" stroke="#22c55e" stroke-width="2"/>
+                    <line x1="100" y1="125" x2="100" y2="135" stroke="#22c55e" stroke-width="2"/>
+                    <line x1="65" y1="124" x2="65" y2="134" stroke="#22c55e" stroke-width="2"/>
+                    <text x="140" y="160" font-family="inherit" font-size="11" fill="#22c55e" font-weight="600" text-anchor="middle">5 time units, far reach</text>
+
+                    <!-- Hill path: short, climbing the hill east toward summit -->
+                    <path d="M 240 130 Q 270 128 290 125 Q 310 120 325 117 Q 340 115 352 116" stroke="#ffca00" stroke-width="2.5" fill="none"/>
+                    <line x1="265" y1="123" x2="265" y2="133" stroke="#ffca00" stroke-width="2"/>
+                    <line x1="288" y1="119" x2="288" y2="130" stroke="#ffca00" stroke-width="2"/>
+                    <line x1="310" y1="115" x2="310" y2="125" stroke="#ffca00" stroke-width="2"/>
+                    <line x1="332" y1="112" x2="332" y2="122" stroke="#ffca00" stroke-width="2"/>
+                    <line x1="352" y1="111" x2="352" y2="121" stroke="#ffca00" stroke-width="2"/>
+                    <text x="310" y="100" font-family="inherit" font-size="11" fill="#ffca00" font-weight="600" text-anchor="middle">5 time units, short reach</text>
+
+                    <!-- IPP at the boundary -->
+                    <circle cx="240" cy="130" r="7" fill="#e24b4a" stroke="white" stroke-width="2"/>
+                    <text x="240" y="195" font-family="inherit" font-size="11" fill="#e24b4a" text-anchor="middle" font-weight="600">IPP</text>
+                </svg>
+            </div>
+
+            <div style="background:var(--bg-input);border-radius:8px;padding:20px;margin-bottom:20px;">
+                <h3 style="font-size:15px;color:#00bcd4;margin-bottom:8px;">3. The result: deformed isochrones</h3>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:12px;">Each isochrone contour traces the boundary of "where could the subject physically be after N hours." On real terrain those boundaries bulge outward along trails and valleys (more reachable in the same time) and pull inward against cliffs, dense forest, and water (less reachable).</p>
+                <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px;">Travel Time uses the same anisotropic cost-distance engine as TARRs. The difference is what it measures: TARRs use statistical Lost Person Behavior find distances calibrated against historical missions; Travel Time uses pure physical reachability at a coordinator-supplied flat-ground speed. No subject profile required.</p>
+                <svg width="100%" viewBox="0 0 500 300" style="display:block;margin:0 auto;">
+                    <rect x="20" y="10" width="460" height="260" rx="4" fill="#3a5a2a" opacity="0.15"/>
+                    <text x="40" y="30" font-family="inherit" font-size="11" fill="#7a9a6a">Terrain with a hill, a trail, and a river</text>
+
+                    <!-- River along the bottom acting as barrier -->
+                    <path d="M 20 250 Q 100 245 180 252 Q 260 258 340 248 Q 410 240 480 245" stroke="#4a5a8a" stroke-width="6" fill="none" opacity="0.7"/>
+                    <text x="35" y="270" font-family="inherit" font-size="10" fill="#4a5a8a" font-style="italic">river (barrier)</text>
+
+                    <!-- Hill as nested topographic contour ellipses (centered above IPP at x=250) -->
+                    <ellipse cx="250" cy="95" rx="80" ry="50" fill="#8a7050" opacity="0.18"/>
+                    <ellipse cx="250" cy="95" rx="80" ry="50" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="250" cy="95" rx="55" ry="35" fill="#8a7050" opacity="0.18"/>
+                    <ellipse cx="250" cy="95" rx="55" ry="35" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="250" cy="95" rx="32" ry="20" fill="#8a7050" opacity="0.2"/>
+                    <ellipse cx="250" cy="95" rx="32" ry="20" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.55"/>
+                    <ellipse cx="250" cy="95" rx="12" ry="8" fill="#8a7050" opacity="0.3"/>
+                    <ellipse cx="250" cy="95" rx="12" ry="8" fill="none" stroke="#8a7050" stroke-width="1" opacity="0.7"/>
+                    <text x="250" y="42" font-family="inherit" font-size="10" fill="#8a7050" text-anchor="middle" font-style="italic">hill</text>
+
+                    <!-- Horizontal trail through IPP -->
+                    <path d="M 30 150 L 470 150" stroke="#a08060" stroke-width="2" stroke-dasharray="6 3"/>
+                    <text x="40" y="142" font-family="inherit" font-size="10" fill="#a08060" font-style="italic">trail</text>
+
+                    <!-- Isochrones: monotonic-but-tight spacing over the hill, bulging east-west along trail, tight against river south -->
+                    <path d="M 180 150 Q 180 120 215 120 Q 235 122 245 132 Q 250 138 255 138 Q 260 138 265 132 Q 275 122 295 120 Q 320 120 320 150 Q 320 195 280 220 Q 250 220 220 220 Q 180 195 180 150 Z" fill="none" stroke="#00bcd4" stroke-width="2.5"/>
+                    <path d="M 130 150 Q 130 100 175 95 Q 215 92 230 108 Q 240 118 248 122 Q 253 124 257 124 Q 263 124 268 122 Q 275 118 285 108 Q 305 92 350 95 Q 380 100 380 150 Q 375 205 310 230 Q 250 235 200 230 Q 130 205 130 150 Z" fill="none" stroke="#5fd4e0" stroke-width="2.5"/>
+                    <path d="M 80 150 Q 80 80 145 70 Q 200 65 220 90 Q 232 105 245 112 Q 252 116 258 116 Q 267 116 275 112 Q 290 105 305 90 Q 330 65 390 70 Q 430 80 430 150 Q 425 215 320 240 Q 250 244 175 240 Q 80 215 80 150 Z" fill="none" stroke="#9beae8" stroke-width="2.5"/>
+
+                    <!-- IPP marker on top -->
+                    <circle cx="250" cy="150" r="7" fill="#e24b4a" stroke="white" stroke-width="2"/>
+                    <text x="250" y="170" font-family="inherit" font-size="11" fill="#e24b4a" text-anchor="middle" font-weight="600">IPP</text>
+
+                    <!-- Hour labels along the east trail -->
+                    <text x="335" y="153" font-family="inherit" font-size="11" fill="#00bcd4" font-weight="600">2 hr</text>
+                    <text x="395" y="153" font-family="inherit" font-size="11" fill="#5fd4e0" font-weight="600">3 hr</text>
+                    <text x="445" y="153" font-family="inherit" font-size="11" fill="#9beae8" font-weight="600">4 hr</text>
+                </svg>
+                <p style="font-size:12px;color:var(--text-muted);line-height:1.5;font-style:italic;margin-top:12px;">Each isochrone indents over the hill, but each one stays clearly outside the next-inner one. The contours bunch close together over the hill (slow terrain = tighter spacing) and spread apart along the trail (fast terrain = wider spacing).</p>
+            </div>
+
+            <div style="background:var(--bg-input);border-radius:8px;padding:20px;margin-bottom:20px;">
+                <h3 style="font-size:15px;color:#00bcd4;margin-bottom:12px;">What goes into the calculation</h3>
+                <table style="width:100%;font-size:13px;color:var(--text-secondary);line-height:1.6;">
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:6px 0;font-weight:600;color:var(--text-primary);">Base speed</td>
+                        <td style="padding:6px 0;">Coordinator-supplied flat-ground walking speed (mph or km/h). Reflects subject fitness and likely pace.</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:6px 0;font-weight:600;color:var(--text-primary);">Slope</td>
+                        <td style="padding:6px 0;">Tobler's hiking function — uphill and steep downhill both slow you down</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:6px 0;font-weight:600;color:var(--text-primary);">Land cover</td>
+                        <td style="padding:6px 0;">NLCD friction — forest, brush, and wetland are slower than open ground</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:6px 0;font-weight:600;color:var(--text-primary);">Trails &amp; roads</td>
+                        <td style="padding:6px 0;">OpenStreetMap data — trails dramatically speed up reachability</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:6px 0;font-weight:600;color:var(--text-primary);">Water barriers</td>
+                        <td style="padding:6px 0;">NHD hydrology — rivers and lakes act as high-impedance barriers, not impossible but slow</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div style="text-align:center;margin-top:16px;">
+                <button onclick="document.getElementById('travelTimeInfoModal').classList.add('hidden');" style="padding:10px 32px;background:#00bcd4;color:white;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Got it</button>
             </div>
         </div>
     </div>
