@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, send_from_directory, send_file
 import urllib.request
 import urllib.parse
+import urllib.error
 import json
 import os
 import threading
@@ -32,22 +33,58 @@ RESULTS_DIR = '/tmp/wisar_results'
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # ============================================================
-# CalTopo API write credentials (Team service account)
+# CalTopo API write credentials (CCSO-SAR service account)
+# ------------------------------------------------------------
+# Loaded from environment variables set by the systemd unit
+# (/etc/systemd/system/wisar.service) via Environment= lines.
+# Credentials never enter source code or version control.
+#
+# If any value is missing at startup, the server still boots,
+# but the CCSO-mode CalTopo push path will fail authentication
+# with CalTopo's API. A warning is logged below to make this
+# diagnosable from journalctl rather than mystifying 401s.
 # ============================================================
-CALTOPO_ACCOUNT_ID = ''
-CALTOPO_CREDENTIAL_ID = ''
-CALTOPO_CREDENTIAL_KEY = ''
+CALTOPO_ACCOUNT_ID = os.environ.get('CALTOPO_ACCOUNT_ID', '')
+CALTOPO_CREDENTIAL_ID = os.environ.get('CALTOPO_CREDENTIAL_ID', '')
+CALTOPO_CREDENTIAL_KEY = os.environ.get('CALTOPO_CREDENTIAL_KEY', '')
 CALTOPO_BASE_URL = 'https://caltopo.com'
 
-def caltopo_sign(method, url_path, expires, payload_string):
-    """Generate HMAC-SHA256 signature for a CalTopo API request."""
+# Startup sanity check: warn (don't crash) if any CCSO credential
+# is missing. Avoids logging the actual values — only reports
+# presence/absence so the warning is safe to appear in logs.
+_ccso_missing = [
+    name for name, value in (
+        ('CALTOPO_ACCOUNT_ID', CALTOPO_ACCOUNT_ID),
+        ('CALTOPO_CREDENTIAL_ID', CALTOPO_CREDENTIAL_ID),
+        ('CALTOPO_CREDENTIAL_KEY', CALTOPO_CREDENTIAL_KEY),
+    ) if not value
+]
+if _ccso_missing:
+    print(f"WARNING: CCSO CalTopo credentials missing from environment: {_ccso_missing}. "
+          f"CCSO-mode CalTopo push will fail until these are set in the systemd unit.")
+del _ccso_missing
+
+def caltopo_sign(method, url_path, expires, payload_string, credential_key):
+    """Generate HMAC-SHA256 signature for a CalTopo API request.
+
+    credential_key is the base64-encoded HMAC secret for the calling team.
+    Passed in as a parameter (rather than read from a global) so this
+    function can serve both CCSO-default and other-team request paths
+    from Phase 4 onward.
+    """
     message = f"{method} {url_path}\n{expires}\n{payload_string}"
-    secret = base64.b64decode(CALTOPO_CREDENTIAL_KEY)
+    secret = base64.b64decode(credential_key)
     signature = hmac_mod.new(secret, message.encode(), hashlib.sha256).digest()
     return base64.b64encode(signature).decode()
 
-def caltopo_api_request(method, endpoint, payload=None):
+def caltopo_api_request(method, endpoint, payload, account_id, credential_id, credential_key):
     """Send an authenticated request to the CalTopo API.
+
+    Credentials (account_id, credential_id, credential_key) are passed in
+    as parameters so the same function serves both CCSO-default callers
+    (which source credentials from module-level env-var loads) and
+    other-team callers (which receive credentials from the request body,
+    held only in the request handler's local scope).
 
     Wire format (v1.14): auth parameters (id, expires, signature) are always
     transmitted as URL query parameters. The JSON payload, when present,
@@ -68,15 +105,21 @@ def caltopo_api_request(method, endpoint, payload=None):
     For GET requests (or POST/PUT with no payload), the behavior is
     effectively unchanged — there's no body to send, so we issue a simple
     authenticated request against the URL.
+
+    account_id is currently accepted but not used in the signed request
+    itself — CalTopo identifies the team via credential_id alone. It's
+    kept in the function signature for symmetry with the way the frontend
+    collects credentials (three fields together) and so future endpoints
+    that DO need the team ID can use the same call signature.
     """
     expires = int((time.time() + 120) * 1000)
     payload_string = json.dumps(payload) if payload else ''
-    signature = caltopo_sign(method, endpoint, expires, payload_string)
+    signature = caltopo_sign(method, endpoint, expires, payload_string, credential_key)
 
     # Auth params always go on the URL regardless of method.
     sep = '&' if '?' in endpoint else '?'
     url = (f"{CALTOPO_BASE_URL}{endpoint}{sep}"
-           f"id={CALTOPO_CREDENTIAL_ID}"
+           f"id={credential_id}"
            f"&expires={expires}"
            f"&signature={urllib.request.quote(signature, safe='')}")
 
@@ -122,32 +165,6 @@ def load_result(analysis_id):
 def index():
     return send_from_directory('static', 'index.html')
 
-@app.route('/api/caltopo/<map_id>')
-def get_caltopo_data(map_id):
-    try:
-        url = f'https://caltopo.com/api/v1/map/{map_id}/since/0'
-        req = urllib.request.Request(url, headers={'User-Agent': 'WiSAR-Decision-Support/0.1'})
-        with urllib.request.urlopen(req, timeout=15) as response:
-            data = json.loads(response.read().decode())
-        features = data.get('result', {}).get('state', {}).get('features', [])
-        segments = [f for f in features if f.get('properties', {}).get('class') == 'Assignment']
-        markers = [f for f in features if f.get('properties', {}).get('class') == 'Marker']
-        ipp = None
-        for m in markers:
-            title = (m.get('properties', {}).get('title', '') or '').strip().upper()
-            if title == 'IPP':
-                coords = m.get('geometry', {}).get('coordinates', [])
-                if len(coords) >= 2:
-                    ipp = {'lat': coords[1], 'lng': coords[0], 'source': 'caltopo'}
-                break
-        return jsonify({'status':'ok','segment_count':len(segments),
-            'segments':{'type':'FeatureCollection','features':segments},
-            'ipp':ipp,'marker_count':len(markers)})
-    except urllib.error.URLError as e:
-        return jsonify({'status':'error','message':f'Could not reach CalTopo: {str(e)}'}), 502
-    except Exception as e:
-        return jsonify({'status':'error','message':str(e)}), 500
-
 @app.route('/api/analyze', methods=['POST'])
 def run_analysis_endpoint():
     try:
@@ -177,21 +194,13 @@ def run_analysis_endpoint():
             print(f"  Calibration: {profile_name} x{multiplier:.2f} -> p25={p25:.2f}, p50={p50:.2f}, p75={p75:.2f} km")
         if not has_percentiles:
             p25, p50, p75 = 1.0, 2.0, 3.0  # dummy values, won't be used
-        mode = data.get('mode', 'ipp')
-        radius_km = float(data.get('radius', 5000)) / 1000
-        # CalTopo mode: bbox is union of segment extent + 1 km and IPP + p75 + 1 km
-        # (computed in run_analysis). buffer_km here is just the segment padding.
-        # IPP mode: user-specified radius
-        if mode == 'caltopo':
-            buffer_km = 1.0
-        else:
-            buffer_km = float(data.get('buffer', 2000)) / 1000
-        segments_geojson = data.get('segments', None)
+        # Radius auto-computed from calibrated p75 + 2 km padding, ensuring the
+        # bounding box fully contains all three TARR contours.
+        radius_km = p75 + 2.0
         from pipeline import run_analysis
         result = run_analysis(ipp_lat=ipp_lat, ipp_lng=ipp_lng,
             pct_25_km=p25, pct_50_km=p50, pct_75_km=p75,
-            mode=mode, radius_km=radius_km, buffer_km=buffer_km,
-            segments_geojson=segments_geojson)
+            radius_km=radius_km)
         analysis_id = f"{ipp_lat:.4f}_{ipp_lng:.4f}"
         # Store percentiles in result for PNG renderer
         result['percentiles'] = {'p25': p25, 'p50': p50, 'p75': p75}
@@ -199,7 +208,6 @@ def run_analysis_endpoint():
         import rasterio
         with rasterio.open(result['probability_path']) as src:
             bounds = src.bounds
-        poa_results = result.get('poa_results', [])
         contour_geojson = result.get('contour_geojson', None)
         # Data-source warnings (e.g., OSM fell back to cache, or cache was
         # unavailable entirely). Default to empty list so the frontend can
@@ -208,7 +216,6 @@ def run_analysis_endpoint():
         return jsonify({'status':'ok','analysis_id':analysis_id,
             'has_percentiles':has_percentiles,
             'calibration': {'profile': profile_name, 'multiplier': multiplier} if multiplier != 1.0 else None,
-            'poa_results':poa_results,
             'contour_geojson':contour_geojson,
             'warnings':warnings,
             'bounds':{'west':bounds.left,'south':bounds.bottom,'east':bounds.right,'north':bounds.top},
@@ -341,8 +348,151 @@ def serve_result(analysis_id, filename):
         return jsonify({'status':'error','message':'File not found'}), 404
     return send_file(filepath, mimetype='image/tiff', as_attachment=True, download_name=filename)
 
+# ===============================================================================
+# Jacobs (2015) terrain-attractor rendering
+#
+# The "Pure" heatmap renderer below uses Matt Jacobs's 2015 PDEN findings to
+# color each pixel of the search area by the strongest applicable empirical
+# terrain attractor — independent of cost-distance position from the IPP.
+#
+# This replaced the percentile-band heatmap in v1.15 after field-user review
+# (CCSO SAR coordinator feedback) preferred the Jacobs-driven framing as the
+# default visualization. The TARR contours still mark cost-distance percentile
+# bands on top of the heatmap; only the within-band color is Jacobs-driven.
+#
+# Background and the architectural reasoning that led to this approach are
+# captured in /mnt/project/jacobs_heatmap_design_notes.md and the v0.2 beta
+# status document.
+# ===============================================================================
+
+# Per-pixel attractor weights derived from Jacobs (2015) Table 1 PDEN values,
+# normalized so the strongest finding (stream-trail intersection at ~10x) maps
+# to 1.00. Each pixel's score is the MAX across applicable masks — not sum —
+# because Jacobs's findings are independent empirical observations of distinct
+# cell categories, not additive multipliers. See _compute_attractor_score_max.
+JACOBS_WEIGHTS = {
+    'stream':       0.28,   # ~2.75x PDEN
+    'intersection': 1.00,   # ~10x PDEN (strongest finding)
+    'low_elev':     0.35,   # ~3.5x PDEN
+    'high_elev':    0.18,   # ~1.75x PDEN
+    'trail':        0.55,   # ~5-7x PDEN
+}
+
+
+def _load_jacobs_masks(result, target_shape):
+    """Load the 5-band Jacobs masks raster and return per-mask boolean arrays.
+
+    Returns a dict keyed by 'stream', 'intersection', 'low_elev', 'high_elev',
+    'trail' (matching JACOBS_WEIGHTS keys). Each value is a boolean numpy
+    array of target_shape. Returns None if the masks file is missing or
+    unreadable — the renderer then degrades gracefully to a cold surface.
+
+    Backwards compatibility: if the masks file has only 4 bands (older
+    analysis runs before the trail band was added), the trail mask is
+    returned as all-False so the render path doesn't KeyError.
+    """
+    masks_path = result.get('jacobs_masks_path')
+    if not masks_path or not os.path.exists(masks_path):
+        return None
+    import rasterio
+    import numpy as np
+    with rasterio.open(masks_path) as src:
+        if (src.height, src.width) != target_shape:
+            print(f"  Jacobs masks shape mismatch: masks={src.height}x{src.width} "
+                  f"vs target={target_shape[0]}x{target_shape[1]}")
+            return None
+        band_count = src.count
+        stack = src.read()
+    masks = {
+        'stream':       stack[0].astype(bool),
+        'intersection': stack[1].astype(bool),
+        'low_elev':     stack[2].astype(bool),
+        'high_elev':    stack[3].astype(bool),
+    }
+    if band_count >= 5:
+        masks['trail'] = stack[4].astype(bool)
+    else:
+        masks['trail'] = np.zeros(target_shape, dtype=bool)
+    return masks
+
+
+def _apply_colormap(norm):
+    """Convert a [0, 1] priority array to RGB via the 11-stop ramp.
+
+    Returns (r_arr, g_arr, b_arr) — each a float array matching norm's shape.
+    Ramp: blue (cold) -> teal -> green -> yellow -> orange -> red (hot).
+    """
+    import numpy as np
+    stops = [(0.0,  30, 80,180),  (0.08, 43,108,196), (0.17, 46,140,160),
+             (0.25, 46,165,120),  (0.33, 60,185, 80), (0.42, 130,205,50),
+             (0.52, 220,175, 35), (0.63, 240,150, 30), (0.75, 240,120,30),
+             (0.87, 232, 70, 38), (1.0,  210, 45, 35)]
+    r_arr = np.full_like(norm, 30.0)
+    g_arr = np.full_like(norm, 80.0)
+    b_arr = np.full_like(norm, 180.0)
+    for i in range(len(stops)-1):
+        t0, r0, g0, b0 = stops[i]
+        t1, r1, g1, b1 = stops[i+1]
+        mask = (norm >= t0) & (norm < t1) if i < len(stops)-2 else (norm >= t0) & (norm <= t1)
+        frac = np.where(mask, (norm - t0) / (t1 - t0), 0)
+        r_arr = np.where(mask, r0 + frac * (r1 - r0), r_arr)
+        g_arr = np.where(mask, g0 + frac * (g1 - g0), g_arr)
+        b_arr = np.where(mask, b0 + frac * (b1 - b0), b_arr)
+    return r_arr, g_arr, b_arr
+
+
+def _compute_attractor_score_max(jacobs, nodata_mask, shape):
+    """Per-pixel Jacobs attractor score using max(), not sum.
+
+    Each cell reads at the value of its strongest applicable attractor.
+    This matches the structure of Jacobs's (2015) findings — his PDEN
+    figures for "stream proximity," "trail proximity," "stream-trail
+    intersection," etc. are separate empirical measurements of distinct
+    cell categories, NOT additive lifts. A stream-trail intersection cell
+    is ALSO a stream cell and ALSO a trail cell in our masks, but Jacobs's
+    10x intersection PDEN already accounts for that overlap — summing
+    stream + trail + intersection weights would double-count.
+
+    Returns a float array in [0, 1] of the given shape. Zero where no
+    masks apply; otherwise the maximum weight among applicable masks.
+    Zero where nodata_mask is True.
+
+    Returns all-zeros if jacobs is None (masks file missing — graceful
+    degradation rather than 500 error).
+    """
+    import numpy as np
+    score = np.zeros(shape, dtype=np.float32)
+    if jacobs is None:
+        return score
+    for mask_key, weight in JACOBS_WEIGHTS.items():
+        mask = jacobs[mask_key] & (~nodata_mask)
+        if np.any(mask):
+            score = np.where(mask, np.maximum(score, weight), score)
+    return score
+
+
 @app.route('/api/results/<analysis_id>/cost_surface.png')
 def serve_cost_png(analysis_id):
+    """Render the analysis heatmap (Jacobs Pure formulation as of v1.15).
+
+    Per-pixel color is driven entirely by the strongest applicable Jacobs
+    (2015) terrain-attractor signal — cost-distance position from the IPP
+    contributes nothing to within-band color. The TARR contour polygons
+    (drawn separately by the frontend) still mark the p25/p50/p75 envelope,
+    so coordinators see both: the cost-distance envelope as contour lines,
+    and the within-envelope priority as Jacobs-driven color.
+
+    Renders across the FULL cost-distance raster — no alpha fade past p75,
+    no attractor zeroing past p75. The "1-in-4 finds occur outside p75"
+    reality plus Jacobs's empirical finding that linear-feature PDEN
+    INCREASES with IPP-find distance both argue for keeping attractor
+    signal visible to the bbox edge.
+
+    Endpoint URL kept as `cost_surface.png` for backward compatibility with
+    the frontend's existing image-overlay wiring. The name is now slightly
+    misleading (this isn't the cost surface anymore) but renaming would
+    cascade into more frontend changes for no behavioral gain.
+    """
     result = load_result(analysis_id)
     if not result:
         return jsonify({'status':'error','message':'Analysis not found'}), 404
@@ -354,108 +504,58 @@ def serve_cost_png(analysis_id):
         import numpy as np
         from PIL import Image
         import io
-        import math
         with rasterio.open(cd_path) as src:
             data = src.read(1).astype(np.float64)
         nodata_mask = (data <= 0) | (data == -9999) | np.isinf(data) | np.isnan(data)
         height, width = data.shape
-        # Retrieve percentiles from stored analysis result (in km, convert to meters)
-        pct = result.get('percentiles', {})
-        p25_m = float(pct.get('p25', 1.0)) * 1000
-        p50_m = float(pct.get('p50', 2.0)) * 1000
-        p75_m = float(pct.get('p75', 3.0)) * 1000
-        # --- Percentile-band normalization ---
-        # Map cost-distance to a 0-1 "priority" value based on which TARR
-        # band the cell falls in. Each band gets an equal share of the color
-        # ramp so that planners see meaningful differentiation across the
-        # entire search area, not just a hot spot at the IPP.
-        #
-        # Band mapping (priority 1.0 = highest, 0.0 = lowest):
-        #   0 to p25       -> 1.0 down to 0.67  (hottest third: red/orange)
-        #   p25 to p50     -> 0.67 down to 0.33  (middle third: yellow/green)
-        #   p50 to p75     -> 0.33 down to 0.0   (coolest third: teal/blue)
-        #   beyond p75     -> 0.0                 (fades to transparent)
-        #
-        # Within each band, priority decreases linearly with cost-distance.
-        # This ensures monotonic decay from IPP outward with no cold spot
-        # at the origin (unlike raw log-normal PDF which goes to zero at d=0).
-        safe_data = np.where(nodata_mask, p75_m + 1, data)
-        norm = np.zeros_like(safe_data)
-        # Band 1: inside p25 (priority 1.0 -> 0.67)
-        in_p25 = safe_data <= p25_m
-        norm = np.where(in_p25,
-            1.0 - (safe_data / max(p25_m, 1)) * 0.33,
-            norm)
-        # Band 2: p25 to p50 (priority 0.67 -> 0.33)
-        in_p50 = (safe_data > p25_m) & (safe_data <= p50_m)
-        norm = np.where(in_p50,
-            0.67 - ((safe_data - p25_m) / max(p50_m - p25_m, 1)) * 0.34,
-            norm)
-        # Band 3: p50 to p75 (priority 0.33 -> 0.0)
-        in_p75 = (safe_data > p50_m) & (safe_data <= p75_m)
-        norm = np.where(in_p75,
-            0.33 - ((safe_data - p50_m) / max(p75_m - p50_m, 1)) * 0.33,
-            norm)
-        # Beyond p75: floor at 0
-        norm = np.clip(norm, 0, 1)
-        norm[nodata_mask] = 0
+
+        # Per-pixel Jacobs attractor score (max of applicable weights).
+        # This is the entire color signal — no cost-distance contribution.
+        # Attractor scores are computed across the full raster — no clipping
+        # at p75. Coordinators see Jacobs-strong features (intersections,
+        # trails, low pockets) wherever they appear in the search bbox.
+        jacobs = _load_jacobs_masks(result, (height, width))
+        attractor_score = _compute_attractor_score_max(jacobs, nodata_mask, (height, width))
+        attractor_score[nodata_mask] = 0.0
+
+        # Render through the shared colormap
+        r_arr, g_arr, b_arr = _apply_colormap(attractor_score)
         rgba = np.zeros((height, width, 4), dtype=np.uint8)
-        # Red (high priority) -> Orange -> Yellow -> Green -> Teal -> Blue (low)
-        stops = [(0.0,  30, 80,180),  (0.08, 43,108,196), (0.17, 46,140,160),
-                 (0.25, 46,165,120),  (0.33, 60,185, 80), (0.42, 130,205,50),
-                 (0.52, 200,210, 35), (0.63, 235,180, 30), (0.75, 240,120,30),
-                 (0.87, 232, 70, 38), (1.0,  210, 45, 35)]
-        r_arr = np.full_like(norm, 30.0)
-        g_arr = np.full_like(norm, 80.0)
-        b_arr = np.full_like(norm, 180.0)
-        for i in range(len(stops)-1):
-            t0, r0, g0, b0 = stops[i]
-            t1, r1, g1, b1 = stops[i+1]
-            mask = (norm >= t0) & (norm < t1) if i < len(stops)-2 else (norm >= t0) & (norm <= t1)
-            frac = np.where(mask, (norm - t0) / (t1 - t0), 0)
-            r_arr = np.where(mask, r0 + frac * (r1 - r0), r_arr)
-            g_arr = np.where(mask, g0 + frac * (g1 - g0), g_arr)
-            b_arr = np.where(mask, b0 + frac * (b1 - b0), b_arr)
         rgba[:,:,0] = r_arr.clip(0,255).astype(np.uint8)
         rgba[:,:,1] = g_arr.clip(0,255).astype(np.uint8)
         rgba[:,:,2] = b_arr.clip(0,255).astype(np.uint8)
-        # --- Travel corridor highlighting ---
-        # Read the cost surface (friction) raster and identify cells where
-        # friction == 1.0, which are trails, roads, power line ROWs, and
-        # developed open space burned in during cost_surface.py. Blend these
-        # cells toward white to make corridors visually pop as brighter lines
-        # through the priority heatmap. This gives planners an immediate read
-        # on where easy-travel corridors intersect each priority band.
-        cs_path = result.get('cost_surface_path')
-        print(f"  Corridor debug: cs_path={cs_path}, exists={os.path.exists(cs_path) if cs_path else 'N/A'}")
-        if cs_path and os.path.exists(cs_path):
-            with rasterio.open(cs_path) as cs_src:
-                friction = cs_src.read(1)
-            print(f"  Corridor debug: friction shape={friction.shape}, dtype={friction.dtype}, data shape={data.shape}")
-            print(f"  Corridor debug: friction min={np.nanmin(friction):.4f}, max={np.nanmax(friction):.4f}")
-            print(f"  Corridor debug: friction==1.0 count={int(np.sum(friction == 1.0))}, abs<0.01 count={int(np.sum(np.abs(friction - 1.0) < 0.01))}")
-            print(f"  Corridor debug: nodata_mask True count={int(np.sum(nodata_mask))}")
-            if friction.shape == data.shape:
-                corridor_mask = (np.abs(friction - 1.0) < 0.01) & (~nodata_mask)
-                corridor_count = int(np.sum(corridor_mask))
-                print(f"  Corridor highlighting: {corridor_count} cells at friction~=1.0")
-                if corridor_count > 0:
-                    # Blend toward white: mix 35% white into the existing color
-                    blend = 0.55
-                    rgba[corridor_mask, 0] = (rgba[corridor_mask, 0].astype(np.float64) * (1 - blend) + 255 * blend).clip(0, 255).astype(np.uint8)
-                    rgba[corridor_mask, 1] = (rgba[corridor_mask, 1].astype(np.float64) * (1 - blend) + 255 * blend).clip(0, 255).astype(np.uint8)
-                    rgba[corridor_mask, 2] = (rgba[corridor_mask, 2].astype(np.float64) * (1 - blend) + 255 * blend).clip(0, 255).astype(np.uint8)
-            else:
-                print(f"  Corridor highlighting skipped: shape mismatch cd={data.shape} cs={friction.shape}")
-        else:
-            print(f"  Corridor highlighting skipped: path missing or not found")
-        # Alpha: full opacity in main area, fade beyond p75
-        base_alpha = 170
-        alpha = np.where(nodata_mask, 0, base_alpha).astype(np.float64)
-        beyond_p75 = (data > p75_m) & (~nodata_mask)
-        fade = np.clip(1.0 - (data - p75_m) / (p75_m * 0.8), 0.15, 1.0)
-        alpha = np.where(beyond_p75, alpha * fade, alpha)
-        rgba[:,:,3] = alpha.clip(0,255).astype(np.uint8)
+
+        # Variable alpha tied to attractor strength via a gamma-curve ramp.
+        # Cold cells (no Jacobs signal, score=0) stay at ALPHA_FLOOR; mid-range
+        # categories (stream, low-elev, trail) get a disproportionate boost
+        # because gamma<1 lifts mid-range scores more than the endpoints. This
+        # matches field-testing feedback that the green stream signal along
+        # the Colorado was too faint to register without making the cold blue
+        # zones any louder.
+        #
+        # Formula: alpha = ALPHA_FLOOR + ALPHA_RANGE * (attractor_score ** ALPHA_GAMMA)
+        #
+        # Resulting alpha / effective opacity (with 0.6 overlay multiplier):
+        #   score 0.00 (no attractor)    -> alpha 60  (~14%) — unchanged from prior
+        #   score 0.18 (high_elev)       -> alpha 120 (~28%)
+        #   score 0.28 (stream)          -> alpha 139 (~33%)
+        #   score 0.35 (low_elev)        -> alpha 150 (~35%)
+        #   score 0.55 (trail)           -> alpha 178 (~42%)
+        #   score 1.00 (intersection)    -> alpha 230 (~54%)
+        #
+        # All three parameters are tunable. Lower gamma compresses the curve
+        # toward the floor (more uniform visibility); raise it back to 1.0 for
+        # a linear ramp. Adjust ALPHA_RANGE to shift the hot end.
+        ALPHA_FLOOR = 60
+        ALPHA_RANGE = 170
+        ALPHA_GAMMA = 0.6
+        alpha = np.where(
+            nodata_mask,
+            0,
+            ALPHA_FLOOR + ALPHA_RANGE * (attractor_score ** ALPHA_GAMMA)
+        ).clip(0, 255).astype(np.uint8)
+        rgba[:,:,3] = alpha
+
         img = Image.fromarray(rgba, 'RGBA')
         buf = io.BytesIO()
         img.save(buf, format='PNG')
@@ -655,6 +755,40 @@ def export_tarrs_to_caltopo():
         if not features:
             return jsonify({'status': 'error', 'message': 'No contour features to export'}), 400
 
+        # ----- Team routing -----
+        # 'team' field selects whose CalTopo credentials to use for this push:
+        #   'ccso' (default) — use server-side env-var credentials
+        #   'other'          — use credentials supplied in this request body
+        # If 'team' is absent, default to 'ccso' for backward compatibility
+        # with any caller that predates the multi-team feature.
+        # Credentials for 'other' mode are NEVER persisted — they live only
+        # in this function's local scope for the duration of the export call.
+        team = (data.get('team') or 'ccso').lower().strip()
+        if team == 'ccso':
+            use_account_id = CALTOPO_ACCOUNT_ID
+            use_credential_id = CALTOPO_CREDENTIAL_ID
+            use_credential_key = CALTOPO_CREDENTIAL_KEY
+            if not (use_account_id and use_credential_id and use_credential_key):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'CCSO CalTopo credentials are not configured on the server. '
+                               'Contact the tool maintainer.'
+                }), 500
+        elif team == 'other':
+            use_account_id = (data.get('account_id') or '').strip()
+            use_credential_id = (data.get('credential_id') or '').strip()
+            use_credential_key = (data.get('credential_key') or '').strip()
+            if not (use_account_id and use_credential_id and use_credential_key):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Account ID, Credential ID, and Credential Key are all required for Other Team mode.'
+                }), 400
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f"Unknown team selector '{team}'. Expected 'ccso' or 'other'."
+            }), 400
+
         # Detect mode from the first feature. All features in a single export
         # come from one analysis run and share the same mode. We use the
         # presence of the 'hours' property as the discriminator because
@@ -741,14 +875,39 @@ def export_tarrs_to_caltopo():
                 'geometry': geom
             }
             try:
-                resp = caltopo_api_request('POST', f'/api/v1/map/{map_id}/Shape', shape_payload)
+                resp = caltopo_api_request(
+                    'POST', f'/api/v1/map/{map_id}/Shape', shape_payload,
+                    account_id=use_account_id,
+                    credential_id=use_credential_id,
+                    credential_key=use_credential_key,
+                )
                 # 'label' key covers both TARR percentiles and isochrone hours;
                 # frontend only reads .status for success counting, so the
                 # change from 'percentile' is safe.
                 results.append({'label': feature_label, 'status': 'ok',
                                 'id': resp.get('result', {}).get('id', 'unknown')})
                 print(f"  Exported {export_kind} {feature_label} to CalTopo map {map_id}")
+            except urllib.error.HTTPError as http_err:
+                # CalTopo signals bad credentials with 401/403. Surface those
+                # distinctly so the user knows to check their credential
+                # fields. Never echo the credentials back in the response.
+                if http_err.code in (401, 403):
+                    print(f"  CalTopo rejected credentials (HTTP {http_err.code}) for "
+                          f"{export_kind} {feature_label}; aborting remaining exports.")
+                    return jsonify({
+                        'status': 'auth_error',
+                        'message': 'CalTopo rejected the credentials.',
+                        'results': results,
+                    })
+                # Other HTTP errors (404 on map_id, 500 from CalTopo, etc.)
+                # fall through to the generic per-feature error path.
+                results.append({'label': feature_label, 'status': 'error',
+                                'message': f'HTTP {http_err.code}'})
+                print(f"  Failed to export {export_kind} {feature_label}: HTTP {http_err.code}")
             except Exception as e:
+                # Important: str(e) here will not contain credentials because
+                # caltopo_api_request never logs them and any exception from
+                # urllib won't embed the URL's query string in __str__.
                 results.append({'label': feature_label, 'status': 'error', 'message': str(e)})
                 print(f"  Failed to export {export_kind} {feature_label}: {e}")
         ok_count = sum(1 for r in results if r['status'] == 'ok')
@@ -758,46 +917,6 @@ def export_tarrs_to_caltopo():
         return jsonify({'status': 'ok',
                         'message': f'Exported {ok_count}/{len(features)} {noun_plural} to CalTopo',
                         'results': results})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-@app.route('/api/caltopo/update-segments', methods=['POST'])
-def update_segments_on_caltopo():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'status': 'error', 'message': 'No JSON data provided'}), 400
-        map_id = data.get('map_id', '').strip()
-        segments = data.get('segments', [])
-        if not map_id:
-            return jsonify({'status': 'error', 'message': 'No CalTopo map ID provided'}), 400
-        if not segments:
-            return jsonify({'status': 'error', 'message': 'No segments to update'}), 400
-        results = []
-        for seg in segments:
-            seg_id = seg.get('id', '')
-            title = seg.get('title', 'Unknown')
-            rank = seg.get('rank', 0)
-            poa = seg.get('poa', 0)
-            cum_poa = seg.get('cumulative_poa', 0)
-            if not seg_id:
-                results.append({'title': title, 'status': 'error', 'message': 'No CalTopo feature ID'})
-                continue
-            description = f'POA Rank #{rank} — {poa:.1f}%\nCumulative POA: {cum_poa:.1f}%\nRanked by WiSAR Decision Support Tool'
-            update_payload = {
-                'type': 'Feature', 'id': seg_id,
-                'properties': {'class': 'Assignment', 'description': description}
-            }
-            try:
-                resp = caltopo_api_request('POST', f'/api/v1/map/{map_id}/Assignment/{seg_id}', update_payload)
-                results.append({'title': title, 'status': 'ok', 'rank': rank})
-                print(f"  Updated segment '{title}' (#{rank}, {poa:.1f}%) on CalTopo map {map_id}")
-            except Exception as e:
-                results.append({'title': title, 'status': 'error', 'message': str(e)})
-                print(f"  Failed to update segment '{title}': {e}")
-        ok_count = sum(1 for r in results if r['status'] == 'ok')
-        return jsonify({'status': 'ok', 'message': f'Updated {ok_count}/{len(segments)} segments on CalTopo', 'results': results})
     except Exception as e:
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
