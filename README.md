@@ -6,7 +6,7 @@ A web-based spatial analysis tool for Wilderness SAR operations. Instead of draw
 
 **Live site:** [https://sar.weleber.net](https://sar.weleber.net)
 
-![TARR Example — San Francisco Peaks](app/tarr_example_v1_15.png)
+![TARR Example — West Fork of Oak Creek](app/tarr_example_v1_15.png)
 ---
 
 ## What this tool does
