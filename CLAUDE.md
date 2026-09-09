@@ -95,7 +95,8 @@ Cache paths are hardcoded in **two** places — `pipeline/osm_cache.py` and
 `tools/build_osm_cache.py` — deliberately, so cron does not need the package on
 `sys.path`. Change one, change both.
 
-The 5.2 GB cache lives *outside* `app/`, which is why the deploy cannot touch
+The ~19 GB cache (all 50 states + DC, ~58 million features, roughly an hour to
+rebuild) lives *outside* `app/`, which is why the deploy cannot touch
 it. It is regenerable and deliberately not backed up.
 
 ## Known stale documentation
