@@ -6,7 +6,6 @@
 #               and time-based isochrone reachability polygons.
 # Author:       Jamie F. Weleber
 # Created:      March 2026
-# Affiliation:  Coconino County SAR / Graduate Research
 #
 # Structure:
 #   pipeline/

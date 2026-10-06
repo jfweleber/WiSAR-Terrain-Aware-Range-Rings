@@ -68,14 +68,14 @@ CONTOURS_NAME = 'contours.geojson'
 FAILED_NAME = 'failed.json'
 
 # ============================================================
-# CalTopo API write credentials (CCSO-SAR service account)
+# CalTopo API write credentials (server-side service account)
 # ------------------------------------------------------------
 # Loaded from environment variables set by the systemd unit
 # (/etc/systemd/system/wisar.service) via Environment= lines.
 # Credentials never enter source code or version control.
 #
 # If any value is missing at startup, the server still boots,
-# but the CCSO-mode CalTopo push path will fail authentication
+# but the default-mode CalTopo push path will fail authentication
 # with CalTopo's API. A warning is logged below to make this
 # diagnosable from journalctl rather than mystifying 401s.
 # ============================================================
@@ -84,27 +84,27 @@ CALTOPO_CREDENTIAL_ID = os.environ.get('CALTOPO_CREDENTIAL_ID', '')
 CALTOPO_CREDENTIAL_KEY = os.environ.get('CALTOPO_CREDENTIAL_KEY', '')
 CALTOPO_BASE_URL = 'https://caltopo.com'
 
-# Startup sanity check: warn (don't crash) if any CCSO credential
+# Startup sanity check: warn (don't crash) if any server-side credential
 # is missing. Avoids logging the actual values — only reports
 # presence/absence so the warning is safe to appear in logs.
-_ccso_missing = [
+_caltopo_missing = [
     name for name, value in (
         ('CALTOPO_ACCOUNT_ID', CALTOPO_ACCOUNT_ID),
         ('CALTOPO_CREDENTIAL_ID', CALTOPO_CREDENTIAL_ID),
         ('CALTOPO_CREDENTIAL_KEY', CALTOPO_CREDENTIAL_KEY),
     ) if not value
 ]
-if _ccso_missing:
-    print(f"WARNING: CCSO CalTopo credentials missing from environment: {_ccso_missing}. "
-          f"CCSO-mode CalTopo push will fail until these are set in the systemd unit.")
-del _ccso_missing
+if _caltopo_missing:
+    print(f"WARNING: Server-side CalTopo credentials missing from environment: {_caltopo_missing}. "
+          f"default-mode CalTopo push will fail until these are set in the systemd unit.")
+del _caltopo_missing
 
 def caltopo_sign(method, url_path, expires, payload_string, credential_key):
     """Generate HMAC-SHA256 signature for a CalTopo API request.
 
     credential_key is the base64-encoded HMAC secret for the calling team.
     Passed in as a parameter (rather than read from a global) so this
-    function can serve both CCSO-default and other-team request paths
+    function can serve both default-team and other-team request paths
     from Phase 4 onward.
     """
     message = f"{method} {url_path}\n{expires}\n{payload_string}"
@@ -116,7 +116,7 @@ def caltopo_api_request(method, endpoint, payload, account_id, credential_id, cr
     """Send an authenticated request to the CalTopo API.
 
     Credentials (account_id, credential_id, credential_key) are passed in
-    as parameters so the same function serves both CCSO-default callers
+    as parameters so the same function serves both default-team callers
     (which source credentials from module-level env-var loads) and
     other-team callers (which receive credentials from the request body,
     held only in the request handler's local scope).
@@ -597,7 +597,7 @@ def serve_result(analysis_id, filename):
 # terrain attractor — independent of cost-distance position from the IPP.
 #
 # This replaced the percentile-band heatmap in v1.15 after field-user review
-# (CCSO SAR coordinator feedback) preferred the Jacobs-driven framing as the
+# (SAR coordinator feedback) preferred the Jacobs-driven framing as the
 # default visualization. The TARR contours still mark cost-distance percentile
 # bands on top of the heatmap; only the within-band color is Jacobs-driven.
 #
@@ -998,21 +998,21 @@ def export_tarrs_to_caltopo():
 
         # ----- Team routing -----
         # 'team' field selects whose CalTopo credentials to use for this push:
-        #   'ccso' (default) — use server-side env-var credentials
-        #   'other'          — use credentials supplied in this request body
-        # If 'team' is absent, default to 'ccso' for backward compatibility
+        #   'default' — use server-side env-var credentials
+        #   'other'   — use credentials supplied in this request body
+        # If 'team' is absent, fall back to 'default' for backward compatibility
         # with any caller that predates the multi-team feature.
         # Credentials for 'other' mode are NEVER persisted — they live only
         # in this function's local scope for the duration of the export call.
-        team = (data.get('team') or 'ccso').lower().strip()
-        if team == 'ccso':
+        team = (data.get('team') or 'default').lower().strip()
+        if team == 'default':
             use_account_id = CALTOPO_ACCOUNT_ID
             use_credential_id = CALTOPO_CREDENTIAL_ID
             use_credential_key = CALTOPO_CREDENTIAL_KEY
             if not (use_account_id and use_credential_id and use_credential_key):
                 return jsonify({
                     'status': 'error',
-                    'message': 'CCSO CalTopo credentials are not configured on the server. '
+                    'message': 'Server-side CalTopo credentials are not configured on the server. '
                                'Contact the tool maintainer.'
                 }), 500
         elif team == 'other':
@@ -1027,7 +1027,7 @@ def export_tarrs_to_caltopo():
         else:
             return jsonify({
                 'status': 'error',
-                'message': f"Unknown team selector '{team}'. Expected 'ccso' or 'other'."
+                'message': f"Unknown team selector '{team}'. Expected 'default' or 'other'."
             }), 400
 
         # Detect mode from the first feature. All features in a single export

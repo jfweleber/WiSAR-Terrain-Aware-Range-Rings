@@ -433,7 +433,7 @@
 	<div class="modal-overlay" id="splashModal">
         <div class="modal">
             <h1>WiSAR Decision Support Tool</h1>
-            <p class="modal-subtitle">Coconino County Sheriff&#39;s Search &amp; Rescue</p>
+            <p class="modal-subtitle">Terrain-aware decision support for wilderness search</p>
             <div class="modal-options">
                 <div class="modal-option" onclick="selectMode('tarr')">
                     <span class="option-icon">&#127919;</span>
@@ -563,7 +563,7 @@
                     <p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">CalTopo TARR export:</span> TARR percentile contours can now be pushed directly to a CalTopo map as Shape objects via the CalTopo API. Styled polygons appear on the map with matching colors and descriptions. Available in both IPP Only and CalTopo Import modes after analysis completes.</p>
                     <p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">CalTopo segment ranking update:</span> In CalTopo Import mode, POA rankings can be written back to existing CalTopo Assignment descriptions, giving planners immediate visibility into segment priority without leaving CalTopo.</p>
                     <p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">JavaScript separation:</span> Frontend JavaScript extracted from index.html into a standalone app.js file for maintainability and more reliable deployments.</p>
-                    <p style="margin-bottom:0;"><span style="color:var(--text-primary);font-weight:600;">CalTopo API integration:</span> Server-side HMAC-SHA256 signed requests to CalTopo API using CCSO-SAR service account credentials. Automatic polygon simplification for large contours to stay within URL length limits.</p>
+                    <p style="margin-bottom:0;"><span style="color:var(--text-primary);font-weight:600;">CalTopo API integration:</span> Server-side HMAC-SHA256 signed requests to CalTopo API using server-side service account credentials. Automatic polygon simplification for large contours to stay within URL length limits.</p>
                 </div>
             </div>
             <div style="margin-bottom:24px;">
@@ -651,7 +651,7 @@
     <div class="modal-overlay hidden" id="metadataModal" onclick="if(event.target===this)this.classList.add('hidden');" style="z-index:10000;">
         <div class="modal" style="max-width:750px;max-height:90vh;overflow-y:auto;text-align:left;padding:32px;">
             <h2 style="text-align:center;font-size:22px;color:#ffca00;margin-bottom:4px;">WiSAR Decision Support Tool</h2>
-            <p style="text-align:center;font-size:14px;color:var(--text-muted);margin-bottom:24px;">Coconino County Sheriff's Search &amp; Rescue</p>
+            <p style="text-align:center;font-size:14px;color:var(--text-muted);margin-bottom:24px;">Terrain-aware decision support for wilderness search</p>
 
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">Description</h3>
@@ -670,7 +670,7 @@
                 <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">Calibration:</strong> Per-band multipliers (M25, M50, M75) derived from 362 subjects across 253 Coconino County missions. Multipliers scale each Koester (2008) Euclidean percentile distance independently to compensate for nonlinear TARR contraction caused by terrain friction accumulation over distance. Seven profiles calibrated individually (n&ge;20); uncalibrated profiles use global defaults of &times;1.05 / &times;1.35 / &times;1.80. Validated containment: 27.9% / 50.8% / 78.7% (targets: 25% / 50% / 75%), re-measured September 30, 2026 on the current snapshot data sources.</p>
 				<p style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-bottom:8px;"><strong style="color:var(--text-primary);">TARRs:</strong> Percentile find distances applied as contour thresholds on the cost-distance surface. Contours extracted as vector polygons for crisp rendering and CalTopo export.</p>
                 <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">POA ranking:</strong> Log-normal distribution fitted to user percentiles. Continuous probability density evaluated per cell, summed within each CalTopo segment. Values normalized across defined segments to sum to 100%.</p>
-                <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">CalTopo export:</strong> TARR contour polygons and POA segment rankings are pushed to CalTopo maps via authenticated API requests (HMAC-SHA256 signed, CCSO-SAR service account). Polygons simplified to &le;100 vertices for URL-parameter delivery.</p>
+                <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">CalTopo export:</strong> TARR contour polygons and POA segment rankings are pushed to CalTopo maps via authenticated API requests (HMAC-SHA256 signed, server-side service account). Polygons simplified to &le;100 vertices for URL-parameter delivery.</p>
                 <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">GeoJSON export:</strong> TARR contour polygons downloadable as standard GeoJSON FeatureCollection with percentile, threshold, and color properties. Compatible with TAK/CloudTAK, QGIS, ArcGIS, and web mapping applications.</p>
                 <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-bottom:8px;"><strong style="color:var(--text-primary);">Travel Time mode:</strong> Converts the cost-distance surface from terrain-equivalent meters to hours of travel time using a user-specified flat-ground speed: hours = cost_distance_m / (speed_kmh &times; 1000). This reuses the identical anisotropic cost-distance pipeline &mdash; only the interpretation of the output changes. Contours are extracted at user-selected time intervals (e.g., 1h, 2h, 4h, 8h) and represent the maximum extent a subject could physically reach from the IPP. Conceptually equivalent to the mobility model of Doherty et al. (2014), with the addition of user-configurable base speed and on-demand analysis for any CONUS location.</p>
             </div>
@@ -781,7 +781,7 @@
 
             <div style="margin-bottom:16px;">
                 <h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">Contact</h3>
-                <p style="font-size:13px;color:var(--text-secondary);">Jamie Weleber, Coconino County Sheriff's Search &amp; Rescue<br><a href="https://sar.weleber.net" style="color:var(--accent);">https://sar.weleber.net</a></p>
+                <p style="font-size:13px;color:var(--text-secondary);">Jamie Weleber<br><a href="https://sar.weleber.net" style="color:var(--accent);">https://sar.weleber.net</a></p>
             </div>
 
             <p style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: September 30, 2026 | Version 1.18</p>
@@ -795,7 +795,7 @@
          VALIDATION MODAL — Detailed validation methodology and results
          
          Provides technical detail on how the TARR tool was validated
-         against historical Coconino County SAR data, including the
+         against historical Coconino County mission data, including the
          contraction finding, calibration approach, and per-profile
          containment rates.
          ============================================================ -->
@@ -806,7 +806,7 @@
 
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">Dataset</h3>
-                <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;">362 subjects across 253 missions from the Coconino County Sheriff&rsquo;s Office, spanning 12 Koester (2008) lost person behavior profiles. Multi-subject missions where individuals were found at different locations are treated as independent observations. The original April 2026 uncalibrated analysis excluded two subjects who were found at the IPP itself (within 35 m), where the cost-distance probe reads zero; the September 30, 2026 re-run against the current snapshot data sources tests containment by point-in-polygon and includes all 362. Figures below are from that re-run.</p>
+                <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;">362 subjects across 253 missions in Coconino County, Arizona, spanning 12 Koester (2008) lost person behavior profiles. Multi-subject missions where individuals were found at different locations are treated as independent observations. The original April 2026 uncalibrated analysis excluded two subjects who were found at the IPP itself (within 35 m), where the cost-distance probe reads zero; the September 30, 2026 re-run against the current snapshot data sources tests containment by point-in-polygon and includes all 362. Figures below are from that re-run.</p>
             </div>
 
             <div style="margin-bottom:20px;">
@@ -861,7 +861,7 @@
                 <p style="font-size:14px;color:var(--text-secondary);line-height:1.6;"><strong style="color:var(--text-primary);">Small-sample profiles:</strong> Five profiles have fewer than 20 subjects and use global default multipliers. Rates for these profiles should be interpreted with caution.</p>
             </div>
 
-            <p style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Data source: Coconino County Sheriff&rsquo;s Office historical SAR records | Validation date: April 14, 2026 | Version 1.13</p>
+            <p style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Data source: Coconino County historical SAR records | Validation date: April 14, 2026 | Version 1.13</p>
 
             <div style="text-align:center;">
                 <button onclick="document.getElementById('validationModal').classList.add('hidden');" style="padding:10px 32px;background:var(--accent);color:white;border:none;border-radius:6px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;">Close</button>
@@ -1392,7 +1392,7 @@
                                     <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Push to CalTopo</div>
                                     <div id="caltopoTeamRow" style="margin-bottom:10px;">
                                         <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">CalTopo team</label>
-                                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:4px;"><input type="radio" name="caltopoTeam" value="ccso" checked onchange="onCaltopoTeamChange()" /> Coconino County SAR</label>
+                                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:4px;"><input type="radio" name="caltopoTeam" value="default" checked onchange="onCaltopoTeamChange()" /> Default (stored credentials)</label>
                                         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="radio" name="caltopoTeam" value="other" onchange="onCaltopoTeamChange()" /> Other team</label>
                                     </div>
                                     <div id="caltopoCredsRow" style="display:none;margin-bottom:8px;padding:8px;background:var(--bg-field);border:1px solid var(--border);border-radius:4px;">
@@ -1442,7 +1442,7 @@
             </div>
 
         </div>
-        <div class="panel-footer">WiSAR Decision Support Tool — Coconino County SAR<br><a href="#" onclick="document.getElementById('metadataModal').classList.remove('hidden');return false;" style="color:var(--accent);text-decoration:none;">Metadata</a> | <a href="#" onclick="document.getElementById('changelogModal').classList.remove('hidden');return false;" style="color:var(--accent);text-decoration:none;">Changelog</a> | <a href="#" onclick="document.getElementById('validationModal').classList.remove('hidden');return false;" style="color:var(--accent);text-decoration:none;">Validation</a></div>
+        <div class="panel-footer">WiSAR Decision Support Tool<br><a href="#" onclick="document.getElementById('metadataModal').classList.remove('hidden');return false;" style="color:var(--accent);text-decoration:none;">Metadata</a> | <a href="#" onclick="document.getElementById('changelogModal').classList.remove('hidden');return false;" style="color:var(--accent);text-decoration:none;">Changelog</a> | <a href="#" onclick="document.getElementById('validationModal').classList.remove('hidden');return false;" style="color:var(--accent);text-decoration:none;">Validation</a></div>
     </div>
     <!-- ============================================================
          MAP CONTAINER — Leaflet map and basemap switcher

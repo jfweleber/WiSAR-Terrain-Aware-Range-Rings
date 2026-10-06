@@ -26,7 +26,7 @@ Given an IPP (the point where a lost person was last seen) and either a subject 
 - **Jacobs-driven heatmap (optional layer):** within-envelope color reflects per-pixel terrain-attractor strength per Jacobs (2015), with stream-trail intersections rendering hottest (their strongest PDEN finding), trails next, then low-elevation pockets, streams, and high-elevation prominence. Renders at full opacity across the entire search area, including past the 75th percentile, where roughly 1-in-4 finds still occur. Off by default since v1.16; enable it from the Map Layers toggles.
 - **28 subject categories** from Lost Person Behavior (Koester 2008) with eco-region and terrain selectors.
 - **Per-band calibration** — profile-specific multipliers at each percentile threshold, validated against 362 historical subjects from 253 Coconino County missions, re-measured September 2026 on the current snapshot data sources.
-- **CalTopo write-back, any team:** push TARR contours or travel-time isochrones to a CalTopo map as named Shape features. Coconino County SAR uses the team's stored credentials by default; other teams enter their own CalTopo API credentials in the UI and the tool passes them through without storing.
+- **CalTopo write-back, any team:** push TARR contours or travel-time isochrones to a CalTopo map as named Shape features. The default option uses credentials stored on the server; other teams enter their own CalTopo API credentials in the UI and the tool passes them through without storing.
 - **Predictable OSM data** — trails, roads, waterways, and power lines are read from a weekly-refreshed local snapshot covering all 50 states and DC, built from Geofabrik extracts. No dependency on public Overpass servers; the tool warns if the snapshot is more than 14 days old.
 - **KML and GeoJSON export** of TARR or travel-time contours for CalTopo, Google Earth, TAK/CloudTAK, QGIS, and Avenza.
 - **GeoTIFF downloads** of cost-distance, cost surface, and probability rasters.
@@ -100,7 +100,7 @@ manifests and contours are kept and backed up nightly.
 | Hydrology | USGS NHDPlus High Resolution, 1:24k (local snapshot) — waterbodies, area features, flowlines with Strahler order | Vector |
 | Subject profiles | Koester (2008), via Ferguson (2013) IGT4SAR | Statistical |
 | Terrain attractor weights | Jacobs (2015) PDEN findings | Per-feature |
-| Calibration | Coconino County Sheriff's Office (360 subjects, 253 missions) | Per-profile |
+| Calibration | Coconino County historical missions (360 subjects, 253 missions) | Per-profile |
 
 ## Methodology
 
@@ -139,7 +139,6 @@ Travel Time mode uses the same cost-distance pipeline but converts terrain-equiv
 ## Author
 
 **Jamie F. Weleber**
-Coconino County Sheriff's Search & Rescue
 
 ## License
 

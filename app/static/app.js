@@ -58,11 +58,11 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
         function setCaltopoExportStatus(type,msg){var el=document.getElementById('caltopoExportStatus');el.style.display='block';el.style.background=type==='success'?'rgba(34,197,94,0.1)':type==='error'?'rgba(239,68,68,0.1)':'rgba(59,130,246,0.1)';el.style.color=type==='success'?'var(--success)':type==='error'?'#ef4444':'var(--accent)';el.style.border='1px solid '+(type==='success'?'rgba(34,197,94,0.3)':type==='error'?'rgba(239,68,68,0.3)':'rgba(59,130,246,0.3)');el.textContent=msg;}
 
         // Show/hide the credentials sub-section based on the team radio
-        // selection. CCSO mode uses server-side env-var credentials; Other
+        // selection. Default mode uses server-side env-var credentials; Other
         // mode reveals the three input fields for user-supplied credentials.
         function onCaltopoTeamChange(){
             var teamRadio = document.querySelector('input[name="caltopoTeam"]:checked');
-            var team = teamRadio ? teamRadio.value : 'ccso';
+            var team = teamRadio ? teamRadio.value : 'default';
             var credsRow = document.getElementById('caltopoCredsRow');
             if (credsRow) {
                 credsRow.style.display = (team === 'other') ? 'block' : 'none';
@@ -86,12 +86,12 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
                 return;
             }
 
-            // Read team selection and assemble the request body. CCSO mode
+            // Read team selection and assemble the request body. Default mode
             // sends just {team, map_id, contours} — server uses env-var
             // credentials. Other mode sends the three credential fields too;
             // server passes them through to CalTopo without persisting.
             var teamRadio = document.querySelector('input[name="caltopoTeam"]:checked');
-            var team = teamRadio ? teamRadio.value : 'ccso';
+            var team = teamRadio ? teamRadio.value : 'default';
             var body = { team: team, map_id: mapId, contours: gj };
 
             if (team === 'other') {
@@ -233,12 +233,12 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
             document.getElementById('exportTarrsBtn')&&(document.getElementById('exportTarrsBtn').style.display='none');
             document.getElementById('caltopoExportStatus')&&(document.getElementById('caltopoExportStatus').style.display='none');
             if(document.getElementById('caltopoExportMapId'))document.getElementById('caltopoExportMapId').value='';
-            // Reset the CalTopo team selector to CCSO and clear any
+            // Reset the CalTopo team selector to the default and clear any
             // user-entered "Other Team" credentials. Per design, credentials
-            // never persist — every session starts with the CCSO default
+            // never persist — every session starts with the server default
             // and empty credential fields if the user switches to Other.
-            var ccsoRadio=document.querySelector('input[name="caltopoTeam"][value="ccso"]');
-            if(ccsoRadio)ccsoRadio.checked=true;
+            var defaultRadio=document.querySelector('input[name="caltopoTeam"][value="default"]');
+            if(defaultRadio)defaultRadio.checked=true;
             var credsRow=document.getElementById('caltopoCredsRow');
             if(credsRow)credsRow.style.display='none';
             if(document.getElementById('caltopoAccountId'))document.getElementById('caltopoAccountId').value='';
