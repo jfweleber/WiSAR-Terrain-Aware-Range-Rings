@@ -4,68 +4,38 @@ import urllib.parse
 import urllib.error
 import json
 import os
-import re
-import secrets
 import traceback
 import base64
 import hmac as hmac_mod
 import hashlib
 import time
-from datetime import datetime, timezone
 
 app = Flask(__name__, static_folder='static')
 
-APP_VERSION = '1.18'
+# The analysis store and the queue live in store.py, shared with worker.py.
+from store import (APP_VERSION, RASTER_FILES, SLOTS, QueueFull, clean_label,
+                   new_analysis_id, load_result, enqueue, queue_status,
+                   list_markers, worker_alive, typical_duration)
 
 # ============================================================
-# The analysis store
+# How an analysis runs (since the queue, v1.19, October 2026)
 # ------------------------------------------------------------
-# Every analysis gets its own directory under RUNS_DIR, named by its
-# analysis_id, holding the rasters the pipeline wrote, contours.geojson
-# and manifest.json (inputs, settings, data-source versions, timings).
+# The analyze endpoints no longer run the pipeline. They validate the
+# request exactly as before, write it to a new run directory as job.json,
+# put a marker in the queue (store.enqueue) and answer 202 with the
+# analysis_id at once. worker.py, a separate systemd service
+# (wisar-worker.service), runs the queue two at a time and writes
+# manifest.json when a run is done. The browser polls
+# GET /api/analyses/<id>/status, which reports the position in the queue
+# and an estimate, then the current pipeline step, then the finished
+# result in the same shape GET /api/analyses/<id> returns.
 #
-# Before v1.18 rasters went to one mkdtemp directory per gunicorn worker
-# with fixed file names, so the next analysis handled by the same worker
-# overwrote the previous one's rasters while the previous record still
-# pointed at them (its downloads then served the wrong raster under the
-# right name), and the records themselves sat in /tmp keyed by rounded
-# coordinates, so two analyses from one IPP replaced each other.
-#
-# RUNS_DIR sits beside app/ and cache/, outside the rsync --delete tree,
-# so a deploy cannot touch it. tools/prune_runs.py removes rasters after
-# a retention window; manifests and contours are kept, and the nightly
-# backup carries them (weleber-server-config/scripts/weleber-backup).
+# Before this, /api/analyze blocked a gunicorn worker for the whole
+# analysis. With five workers a sixth request of any kind, a page load
+# included, waited in the kernel's accept queue with no feedback, and
+# after 600 s nginx answered 504 with an HTML page the browser could not
+# parse. A room of people pressing Run at once now sees a queue instead.
 # ============================================================
-RUNS_DIR = os.environ.get('WISAR_RUNS_DIR', '/var/www/sar.weleber.net/runs')
-try:
-    os.makedirs(RUNS_DIR, exist_ok=True)
-    _probe = os.path.join(RUNS_DIR, '.write-test')
-    with open(_probe, 'w') as _f:
-        _f.write('ok')
-    os.remove(_probe)
-except OSError as _e:
-    # Refuse to start rather than fall back to /tmp: a silent fallback is
-    # exactly the failure this store exists to end, and a service that
-    # does not start fails the deploy's health check loudly.
-    raise SystemExit(f"ERROR: analysis store {RUNS_DIR} is not writable ({_e}). "
-                     f"Set WISAR_RUNS_DIR to a writable directory.")
-
-# analysis_id doubles as a directory name and a URL segment; anything
-# outside this set is answered 404 before it reaches the filesystem.
-ANALYSIS_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$')
-
-# Raster keys in a pipeline result -> file name inside the run directory.
-RASTER_FILES = {
-    'dem_path': 'dem.tif',
-    'nlcd_path': 'nlcd.tif',
-    'cost_surface_path': 'cost_surface.tif',
-    'cost_distance_path': 'cost_distance.tif',
-    'probability_path': 'probability.tif',
-    'jacobs_masks_path': 'jacobs_masks.tif',
-}
-MANIFEST_NAME = 'manifest.json'
-CONTOURS_NAME = 'contours.geojson'
-FAILED_NAME = 'failed.json'
 
 # ============================================================
 # CalTopo API write credentials (server-side service account)
@@ -176,168 +146,6 @@ def caltopo_api_request(method, endpoint, payload, account_id, credential_id, cr
         else:
             return {'status': 'ok', 'result': {}}
 
-def utc_now_iso():
-    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-
-
-def clean_label(value):
-    """Optional incident label from the request: whitespace-normalised, capped."""
-    return ' '.join(str(value or '').split())[:120]
-
-
-def new_analysis_id(mode, lat, lng):
-    """Unique, sortable, readable id: time, mode, IPP, random suffix.
-
-    The suffix makes the id unguessable, so a link to an analysis is the
-    credential for opening it (the site has no login), and two analyses
-    started in the same second from the same IPP get separate directories.
-    """
-    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    return f"{stamp}_{mode}_{lat:.4f}_{lng:.4f}_{secrets.token_hex(4)}"
-
-
-def run_dir(analysis_id):
-    """Directory for an analysis_id, or None if the id is malformed."""
-    if not analysis_id or not ANALYSIS_ID_RE.match(analysis_id):
-        return None
-    return os.path.join(RUNS_DIR, analysis_id)
-
-
-def write_json_atomic(path, obj):
-    """Write via a temp file and rename, so a reader never sees a partial file."""
-    tmp = path + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(obj, f, indent=1)
-    os.replace(tmp, path)
-
-
-def snapshot_versions(warnings):
-    """Which data-source versions produced this run, for the manifest.
-
-    A re-run later is not the same analysis: the OSM snapshot changes
-    weekly, NHD quarterly, NLCD yearly, and the DEM may have come from the
-    staged tiles instead of the ImageServer. Recording this is what lets
-    a result be explained after the fact.
-    """
-    from pipeline import osm_cache, nlcd_cache, nhd_cache
-    out = {}
-    for name, mod in (('osm', osm_cache), ('nlcd', nlcd_cache), ('nhd', nhd_cache)):
-        try:
-            meta = mod.read_cache_metadata() if mod.cache_is_available() else {}
-        except Exception:
-            meta = {}
-        out[name] = {k: meta[k] for k in ('built_at', 'year', 'source') if k in meta}
-    dem_fallback = any(w.get('source') == 'dem' and w.get('severity') == 'info'
-                       for w in warnings or [])
-    out['dem'] = 'usgs_staged_tiles' if dem_fallback else '3dep_imageserver'
-    return out
-
-
-def raster_summary(path):
-    """Bounds and grid of the raster every other output derives from."""
-    import rasterio
-    with rasterio.open(path) as src:
-        b = src.bounds
-        t = src.transform
-        return ({'west': b.left, 'south': b.bottom, 'east': b.right, 'north': b.top},
-                {'width': src.width, 'height': src.height,
-                 'cell_m': round(abs(t.e) * 110540, 1)})
-
-
-def save_result(analysis_id, result, mode, request_data, label, started_at, extra):
-    """Write contours.geojson and manifest.json into the run directory.
-
-    `result` is the pipeline's return dict (absolute raster paths, contour
-    GeoJSON, warnings, timings). The manifest records file names relative
-    to its directory, so the store can be moved or restored elsewhere.
-    `extra` carries the mode-specific fields (percentiles, profile, or
-    isochrone_params) and the IPP as floats.
-    """
-    d = run_dir(analysis_id)
-    bounds, grid = raster_summary(result['cost_distance_path'])
-    files = {}
-    for key, name in RASTER_FILES.items():
-        p = result.get(key)
-        if p and os.path.exists(p):
-            files[key[:-5]] = name          # 'dem_path' -> 'dem'
-    contours = result.get('contour_geojson') or {'type': 'FeatureCollection', 'features': []}
-    write_json_atomic(os.path.join(d, CONTOURS_NAME), contours)
-    manifest = {
-        'schema': 1,
-        'analysis_id': analysis_id,
-        'created_utc': started_at,
-        'completed_utc': utc_now_iso(),
-        'app_version': APP_VERSION,
-        'mode': mode,
-        'label': label,
-        # The request as the browser sent it: calibrated percentiles, the
-        # raw Koester values and multipliers behind them, profile, speed...
-        'request': request_data,
-        'radius_km': result.get('radius_km'),
-        'bbox': list(result.get('bbox') or []),
-        'bounds': bounds,
-        'grid': grid,
-        'warnings': result.get('warnings', []),
-        'sources': snapshot_versions(result.get('warnings')),
-        'timings_s': result.get('timings_s', {}),
-        'files': files,
-        'contours': CONTOURS_NAME,
-        'contour_count': len(contours.get('features', [])),
-    }
-    manifest.update(extra)
-    write_json_atomic(os.path.join(d, MANIFEST_NAME), manifest)
-    return manifest
-
-
-def record_failure(analysis_id, mode, request_data, label, started_at, error):
-    """Leave failed.json in the run directory so a failed run is explainable."""
-    d = run_dir(analysis_id)
-    if not d:
-        return
-    try:
-        os.makedirs(d, exist_ok=True)
-        write_json_atomic(os.path.join(d, FAILED_NAME), {
-            'analysis_id': analysis_id,
-            'created_utc': started_at,
-            'failed_utc': utc_now_iso(),
-            'app_version': APP_VERSION,
-            'mode': mode,
-            'label': label,
-            'request': request_data,
-            'error': str(error),
-            'traceback': traceback.format_exc(),
-        })
-    except Exception as e:
-        print(f"  WARNING: could not record failure for {analysis_id}: {e}")
-
-
-def load_result(analysis_id):
-    """Read a run back from its manifest.
-
-    Returns a dict shaped like the pipeline result the PNG and download
-    routes consume (absolute `*_path` keys, `contour_geojson`,
-    `percentiles`, `isochrone_params`), plus every manifest field. None if
-    the id is malformed or the run does not exist. A pruned raster leaves
-    its `*_path` pointing at a missing file; the routes check existence.
-    """
-    d = run_dir(analysis_id)
-    if not d or not os.path.isfile(os.path.join(d, MANIFEST_NAME)):
-        return None
-    with open(os.path.join(d, MANIFEST_NAME)) as f:
-        manifest = json.load(f)
-    result = dict(manifest)
-    files = manifest.get('files', {})
-    for key, name in RASTER_FILES.items():
-        result[key] = os.path.join(d, name) if key[:-5] in files else None
-    result['contours_path'] = os.path.join(d, manifest.get('contours', CONTOURS_NAME))
-    result['manifest_path'] = os.path.join(d, MANIFEST_NAME)
-    result['contour_geojson'] = None
-    if os.path.isfile(result['contours_path']):
-        with open(result['contours_path']) as f:
-            result['contour_geojson'] = json.load(f)
-    return result
-
-
 def result_response(analysis_id, result):
     """The JSON both analyze endpoints and GET /api/analyses/<id> return.
 
@@ -384,10 +192,6 @@ def index():
 
 @app.route('/api/analyze', methods=['POST'])
 def run_analysis_endpoint():
-    analysis_id = None
-    data = None
-    label = ''
-    started_at = utc_now_iso()
     try:
         data = request.get_json()
         if not data:
@@ -423,31 +227,23 @@ def run_analysis_endpoint():
         radius_km = p75 + 2.0
         label = clean_label(data.get('label'))
         analysis_id = new_analysis_id('tarr', ipp_lat, ipp_lng)
-        work_dir = run_dir(analysis_id)
-        os.makedirs(work_dir)
-        from pipeline import run_analysis
-        t0 = time.time()
-        result = run_analysis(ipp_lat=ipp_lat, ipp_lng=ipp_lng,
-            pct_25_km=p25, pct_50_km=p50, pct_75_km=p75,
-            radius_km=radius_km, work_dir=work_dir)
-        result.setdefault('timings_s', {})['total'] = round(time.time() - t0, 2)
-        save_result(analysis_id, result, 'tarr', data, label, started_at, {
-            'ipp': {'lat': ipp_lat, 'lng': ipp_lng},
-            'has_percentiles': has_percentiles,
-            'profile': profile_name,
-            # Only real thresholds are recorded: the 1/2/3 km placeholders
-            # that size a percentile-less run are not values anyone chose.
-            'percentiles': {'p25': p25, 'p50': p50, 'p75': p75} if has_percentiles else None,
-        })
-        print(f"  Saved analysis {analysis_id} in {result['timings_s']['total']} s")
-        # Build the response from the manifest just written, exactly as a
-        # later GET /api/analyses/<id> will, so the round trip is exercised
-        # on every run.
-        return jsonify(result_response(analysis_id, load_result(analysis_id)))
+        enqueue(analysis_id, 'tarr', data, label,
+                params={'ipp_lat': ipp_lat, 'ipp_lng': ipp_lng,
+                        'pct_25_km': p25, 'pct_50_km': p50, 'pct_75_km': p75,
+                        'radius_km': radius_km},
+                extra={
+                    'ipp': {'lat': ipp_lat, 'lng': ipp_lng},
+                    'has_percentiles': has_percentiles,
+                    'profile': profile_name,
+                    # Only real thresholds are recorded: the 1/2/3 km placeholders
+                    # that size a percentile-less run are not values anyone chose.
+                    'percentiles': {'p25': p25, 'p50': p50, 'p75': p75} if has_percentiles else None,
+                })
+        return queued_response(analysis_id)
+    except QueueFull as e:
+        return busy_response(e)
     except Exception as e:
         traceback.print_exc()
-        if analysis_id:
-            record_failure(analysis_id, 'tarr', data, label, started_at, e)
         return jsonify({'status':'error','message':str(e)}), 500
 
 
@@ -471,10 +267,6 @@ def run_analysis_endpoint():
 # ============================================================
 @app.route('/api/analyze-isochrone', methods=['POST'])
 def run_isochrone_endpoint():
-    analysis_id = None
-    data = None
-    label = ''
-    started_at = utc_now_iso()
     try:
         data = request.get_json()
         if not data:
@@ -517,36 +309,89 @@ def run_isochrone_endpoint():
         # --- Parse analysis radius ---
         radius_km = float(data.get('radius', 10000)) / 1000
 
-        # --- Run the isochrone pipeline ---
+        # --- Queue the isochrone analysis ---
         label = clean_label(data.get('label'))
         analysis_id = new_analysis_id('iso', ipp_lat, ipp_lng)
-        work_dir = run_dir(analysis_id)
-        os.makedirs(work_dir)
-        from pipeline import run_isochrone_analysis
-        t0 = time.time()
-        result = run_isochrone_analysis(
-            ipp_lat=ipp_lat, ipp_lng=ipp_lng,
-            base_speed_kmh=base_speed_kmh,
-            time_intervals_hours=time_intervals,
-            radius_km=radius_km,
-            work_dir=work_dir,
-        )
-        result.setdefault('timings_s', {})['total'] = round(time.time() - t0, 2)
-        save_result(analysis_id, result, 'isochrone', data, label, started_at, {
-            'ipp': {'lat': ipp_lat, 'lng': ipp_lng},
-            'isochrone_params': {
-                'base_speed_kmh': round(base_speed_kmh, 4),
-                'base_speed_mph': round(base_speed_kmh / 1.609344, 2),
-                'intervals': time_intervals,
-            },
-        })
-        print(f"  Saved analysis {analysis_id} in {result['timings_s']['total']} s")
-        return jsonify(result_response(analysis_id, load_result(analysis_id)))
+        enqueue(analysis_id, 'isochrone', data, label,
+                params={'ipp_lat': ipp_lat, 'ipp_lng': ipp_lng,
+                        'base_speed_kmh': base_speed_kmh,
+                        'time_intervals_hours': time_intervals,
+                        'radius_km': radius_km},
+                extra={
+                    'ipp': {'lat': ipp_lat, 'lng': ipp_lng},
+                    'isochrone_params': {
+                        'base_speed_kmh': round(base_speed_kmh, 4),
+                        'base_speed_mph': round(base_speed_kmh / 1.609344, 2),
+                        'intervals': time_intervals,
+                    },
+                })
+        return queued_response(analysis_id)
+    except QueueFull as e:
+        return busy_response(e)
     except Exception as e:
         traceback.print_exc()
-        if analysis_id:
-            record_failure(analysis_id, 'isochrone', data, label, started_at, e)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+def pending_response(analysis_id, qs):
+    """A queued or running analysis, for the status route and for a reopen.
+
+    Carries enough of the request (mode, IPP, the posted parameters) for
+    the browser to restore the form when a link to an unfinished analysis
+    is opened, then keep polling.
+    """
+    body = dict(qs)
+    body.update({'status': 'pending', 'analysis_id': analysis_id,
+                 'status_url': f'/api/analyses/{analysis_id}/status'})
+    return body
+
+
+def queued_response(analysis_id):
+    """202 with the position the analysis was given."""
+    qs = queue_status(analysis_id) or {'state': 'queued'}
+    return jsonify(pending_response(analysis_id, qs)), 202
+
+
+def busy_response(err):
+    wait_min = max(1, round(err.depth * typical_duration() / SLOTS / 60))
+    return jsonify({'status': 'error', 'busy': True,
+                    'message': f'The server is busy: {err.depth} analyses are already waiting '
+                               f'(about {wait_min} minutes). Please try again in a few minutes.'}), 503
+
+
+@app.route('/api/analyses/<analysis_id>/status')
+def analysis_status(analysis_id):
+    """Where an analysis stands. Polled by the browser every few seconds.
+
+    queued  -> position, how many are running, an estimate (202)
+    running -> the pipeline step under way, elapsed time (202)
+    done    -> the finished result, exactly as GET /api/analyses/<id> (200)
+    failed  -> the error (200, status 'error')
+    The estimate is the median of the worker's last thirty run times,
+    multiplied by the number of rounds of free slots ahead of this one.
+    """
+    qs = queue_status(analysis_id)
+    if qs is None:
+        return jsonify({'status': 'error', 'state': 'missing', 'message': 'Analysis not found'}), 404
+    if qs['state'] == 'done':
+        body = result_response(analysis_id, load_result(analysis_id))
+        body['state'] = 'done'
+        return jsonify(body)
+    if qs['state'] == 'failed':
+        return jsonify({'status': 'error', 'state': 'failed', 'analysis_id': analysis_id,
+                        'message': qs.get('message', 'Analysis failed')})
+    return jsonify(pending_response(analysis_id, qs)), 202
+
+
+@app.route('/api/health')
+def health():
+    """For the deploy's check and for a person wondering why nothing runs:
+    is the worker alive, and how deep is the queue."""
+    queued, running = list_markers()
+    alive = worker_alive()
+    return jsonify({'status': 'ok' if alive else 'degraded', 'worker_alive': alive,
+                    'queued': len(queued), 'running': len(running), 'slots': SLOTS,
+                    'typical_s': round(typical_duration()), 'version': APP_VERSION}), (200 if alive else 503)
 
 
 @app.route('/api/analyses/<analysis_id>')
@@ -557,11 +402,20 @@ def get_analysis(analysis_id):
     public list of IPPs would show where searches are happening. The id's
     random suffix makes a link the credential for opening a result, and
     the browser keeps its own list of recent analyses.
+
+    An analysis still in the queue or running answers 202 with its
+    status, so a link shared or refreshed before it finished still opens.
     """
     result = load_result(analysis_id)
-    if not result:
+    if result:
+        return jsonify(result_response(analysis_id, result))
+    qs = queue_status(analysis_id)
+    if qs is None:
         return jsonify({'status': 'error', 'message': 'Analysis not found'}), 404
-    return jsonify(result_response(analysis_id, result))
+    if qs['state'] == 'failed':
+        return jsonify({'status': 'error', 'state': 'failed', 'analysis_id': analysis_id,
+                        'message': qs.get('message', 'Analysis failed')}), 200
+    return jsonify(pending_response(analysis_id, qs)), 202
 
 
 @app.route('/api/results/<analysis_id>/<filename>')

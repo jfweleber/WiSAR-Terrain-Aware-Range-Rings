@@ -14,6 +14,7 @@ import time
 from shapely.geometry import shape
 
 from pipeline.shared import WORK_DIR, repair_geometry
+from pipeline import shared
 from pipeline.shared import get_bbox_from_ipp
 from pipeline.downloads import download_dem, download_nlcd, download_osm_features, download_nhd_features
 from pipeline.cost_surface import build_cost_surface
@@ -22,7 +23,7 @@ from pipeline.jacobs_masks import compute_jacobs_masks
 
 
 class _StepTimer:
-    """Seconds per pipeline step, recorded into the run manifest by the server."""
+    """Seconds per pipeline step, recorded into the run manifest by the worker."""
     def __init__(self):
         self.timings = {}
         self._t = time.time()
@@ -31,6 +32,7 @@ class _StepTimer:
         now = time.time()
         self.timings[step] = round(now - self._t, 2)
         self._t = now
+        shared.notify_step(step)
 
 
 # ===============================================================================

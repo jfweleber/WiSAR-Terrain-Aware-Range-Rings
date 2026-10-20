@@ -20,19 +20,67 @@ overlays, GeoTIFFs, KML/GeoJSON, and a push to CalTopo.
 
 ## The three things most likely to bite
 
-**Everything is synchronous.** `/api/analyze` blocks for tens of seconds
-to minutes — a pure-Python `heapq` Dijkstra over up to 1000×1000 cells
-plus one external HTTP fetch (3DEP, 60 s timeout, then the
-staged-tile fallback) and three local
-snapshot reads. The front end fakes progress
-with an 8-second message rotator; it is not real progress. The long gunicorn and
-nginx timeouts that make this work are configured **only on the server**, so any
-timeout change there can silently break the app.
+**Analyses run from a queue, in a second service.** Since v1.19
+(2026-10-19) `/api/analyze` and `/api/analyze-isochrone` only validate,
+write `job.json` into a new run directory, drop a marker in
+`runs/.queue/` and answer 202 with the id. `app/worker.py`
+(`wisar-worker.service`, same `jamie` user, `Nice=5`) claims markers
+oldest-first by renaming `.queued` to `.running`, runs each analysis as
+a child process, `WISAR_WORKER_SLOTS` (2, on four cores shared with nine
+other sites) at a time, and removes the marker when the child exits. The
+browser polls `GET /api/analyses/<id>/status` every 2.5 s: position, how
+many are running, an estimate (median of the last 30 run times × rounds
+of free slots ahead), then the real pipeline step (`_StepTimer.mark`
+calls `shared.notify_step`, the worker writes `status.json`), then the
+finished result in the same shape as `GET /api/analyses/<id>`. Both
+`store.py` (shared by server and worker) and `worker.py` carry the
+reasoning. The design was ported by hand from the Arizona fork
+(`AZ_WiSAR_TARRs`, 2026-10-19); nothing Arizona-specific came with it.
+Things to keep:
+
+- **The web service must never run the pipeline again.** Before the
+  queue, five synchronous gunicorn workers meant a sixth request of any
+  kind, page loads included, waited unseen in the accept backlog and got
+  a 504 HTML page after 600 s that the browser could not parse. One
+  long-lived worker had also grown to 2.8 GB RSS from past analyses and
+  the host's swap was full; a child per analysis returns that memory.
+- **Two units, and the deploy restarts both.** `wisar.service` (gunicorn)
+  and `wisar-worker.service` live in `weleber-server-config/systemd/`;
+  the deploy account may restart the worker through
+  `sudoers.d/92-deploy-wisar-worker` (mode 0440, or sudo silently ignores
+  it). The workflow then requires `/api/health` to report
+  `worker_alive: true`; a site that serves pages but never runs an
+  analysis fails the deploy. If `/api/health` is 503 on the host,
+  `journalctl -u wisar-worker`.
+- **Restarting the worker is safe at any time**: SIGTERM terminates its
+  children and leaves their `.running` markers; on start `recover()`
+  requeues them (second attempt) or, after two interruptions, writes
+  `failed.json`.
+- **A child past `WISAR_JOB_TIMEOUT` (1500 s) is killed** and recorded as
+  failed. Pure-Python Dijkstra cannot be interrupted from a thread; that
+  is why each analysis is a process (the canyons worker on this host
+  lost 67 minutes to a stuck job for want of this).
+- **More than `WISAR_MAX_QUEUE` (40) waiting answers 503** with a
+  plain-language message; the front end shows it as "Failed: The server
+  is busy...".
+- The heartbeat `runs/.queue/worker.json` goes stale after 30 s; status
+  polls then say the worker is not responding instead of quoting an
+  estimate, and the request stays queued. A flock on
+  `runs/.queue/worker.lock` stops a second worker instance.
+- The gunicorn and nginx 600 s timeouts stay (overlay renders of large
+  rasters), are configured **only on the server**, and still change
+  together.
+- Tested 2026-10-19 in the `wisar-validation-reval` container against
+  the real pipeline: four submissions accepted in 0.11 s, two ran at
+  once, the other two reported positions 1 and 2 and then ran; a SIGTERM
+  mid-run requeued and completed both running jobs on attempt 2; a
+  Travel Time run and the reopen paths. Scripts: the fork's
+  `queue_test.py` and `recovery_test.sh`, recreated per session.
 
 **Every analysis writes to its own directory**,
 `/var/www/sar.weleber.net/runs/<analysis_id>/` (`WISAR_RUNS_DIR` overrides
-it; the server refuses to start if it cannot write there). `server.py`
-creates the directory and passes it to the orchestrators as `work_dir`;
+it; the server refuses to start if it cannot write there). `store.enqueue`
+creates the directory and the worker passes it to the orchestrators as `work_dir`;
 `WORK_DIR` in `pipeline/shared.py` is only the default for one-shot
 scripts. Until v1.18 rasters went to one `mkdtemp` directory per gunicorn
 worker with fixed names, so the next analysis on a worker overwrote the
@@ -156,28 +204,37 @@ owned by `jamie` like the service. Each run directory holds
 `manifest.json` (the request as posted including raw Koester values and
 multipliers, profile, mode, radius, bbox, grid and cell size, warnings,
 snapshot `built_at` stamps, which DEM source answered, per-step timings,
-the file list), `contours.geojson`, and the six rasters (5–17 MB in all).
-A run that raised leaves `failed.json` with the error and traceback. JSON
-is written atomically. The analyze endpoints build their response by
-reading the manifest back, so the round trip is exercised on every run.
+the file list), `contours.geojson`, and the six rasters (5–17 MB in all),
+plus `job.json` (the validated request as queued, with the attempt count)
+and `status.json` (the worker's last progress note). The manifest is the
+same record the synchronous endpoint wrote in v1.18. A run that raised
+leaves `failed.json` with the error and traceback. JSON is written
+atomically. The status endpoint builds the finished response by reading
+the manifest back, so the round trip is exercised on every run.
+`runs/.queue/` holds the markers, the worker heartbeat, `worker.lock` and
+`stats.json` (recent durations); none of it is a run and none of it is
+backed up.
 
 **Retention.** `tools/prune_runs.py` deletes rasters older than 180 days
-and never touches `manifest.json`, `contours.geojson` or `failed.json`;
-directories that never got a record are removed after a day. Monthly cron
+and never touches `manifest.json`, `contours.geojson`, `failed.json`,
+`job.json` or `status.json`; directories that never got a record are
+removed after a day, and dot-directories are skipped. Monthly cron
 in `weleber-server-config/cron/jamie.crontab`; the path is hardcoded in
-the tool and in `server.py`, change both. The nightly backup
+the tool and in `store.py`, change both. The nightly backup
 (`weleber-server-config/scripts/weleber-backup`) carries manifests and
 contours only. They are the irreplaceable record of what a planner was
 shown, and a re-run later is not the same analysis because the snapshots
 move. The response's `available` map says which rasters still exist; a
 reopened run past the window shows contours and settings and says so.
 
-**Front end.** After every run `app.js` puts `?analysis=<id>` in the URL,
-shows the link in Analysis Results, and records the run in a per-browser
-list (`localStorage`, `wisar_saved_analyses_v1`). Opening a link restores
-the IPP, profile and raw percentiles, or speed and intervals, then draws
-the result through the same `renderTarrResult` / `renderIsoResult` the
-fresh run uses. The optional Incident Label is stored in the manifest and
+**Front end.** `app.js` puts `?analysis=<id>` in the URL as soon as the
+run is queued, shows the link in Analysis Results when it finishes, and
+records the run in a per-browser list (`localStorage`,
+`wisar_saved_analyses_v1`). Opening a link restores the IPP, profile and
+raw percentiles, or speed and intervals (`restoreInputs`), then either
+draws the result through the same `renderTarrResult` / `renderIsoResult`
+the fresh run uses or, for a 202 from `GET /api/analyses/<id>`, shows the
+queue position and polls until it can. Reset cancels the poll. The optional Incident Label is stored in the manifest and
 used in download file names; it is not added to the frozen CalTopo
 descriptions.
 

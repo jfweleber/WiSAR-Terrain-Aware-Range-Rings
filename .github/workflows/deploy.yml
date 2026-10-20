@@ -44,18 +44,35 @@ jobs:
             -e "ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes" \
             app/ deploy@${{ secrets.DEPLOY_HOST }}:/var/www/sar.weleber.net/app/
 
-      - name: Restart service
+      # Both units run the code just shipped: wisar.service (gunicorn) and
+      # wisar-worker.service (the analysis queue worker, app/worker.py). A
+      # restart of the worker requeues any analysis in flight (worker.py,
+      # recover); nothing is lost. The sudoers rules are 91-deploy and
+      # 92-deploy-wisar-worker in weleber-server-config.
+      - name: Restart services
         run: |
           ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes \
             deploy@${{ secrets.DEPLOY_HOST }} \
-            'sudo systemctl restart wisar.service && sudo systemctl is-active wisar.service'
+            'sudo systemctl restart wisar.service && sudo systemctl restart wisar-worker.service && sudo systemctl is-active wisar.service && sudo systemctl is-active wisar-worker.service'
       - name: Health check
         run: |
           for i in 1 2 3 4 5 6; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://sar.weleber.net/ || echo 000)
             echo "attempt $i: HTTP $code"
-            if [ "$code" = "200" ]; then echo "deploy verified"; exit 0; fi
+            if [ "$code" = "200" ]; then break; fi
             sleep 5
           done
-          echo "health check FAILED - site is not returning 200"
+          [ "$code" = "200" ] || { echo "health check FAILED - site is not returning 200"; exit 1; }
+      # /api/health is 200 only while the worker's heartbeat is fresh. A site
+      # that serves pages but never runs an analysis would otherwise pass.
+      - name: Worker check
+        run: |
+          for i in 1 2 3 4 5 6; do
+            body=$(curl -s --max-time 20 https://sar.weleber.net/api/health || echo '')
+            echo "attempt $i: $body"
+            if echo "$body" | grep -q '"worker_alive": *true'; then echo "deploy verified"; exit 0; fi
+            sleep 5
+          done
+          echo "worker check FAILED - the analysis queue worker is not reporting a heartbeat"
+          echo "  on the host: sudo journalctl -u wisar-worker -n 50"
           exit 1

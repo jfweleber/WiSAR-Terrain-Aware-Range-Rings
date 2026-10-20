@@ -1,6 +1,6 @@
 # WiSAR Decision Support Tool
 
-**A Terrain-Aware Planning Aid for Wilderness Search and Rescue (v1.18)**
+**A Terrain-Aware Planning Aid for Wilderness Search and Rescue (v1.19)**
 
 A web-based spatial analysis tool for Wilderness SAR operations. Instead of drawing simple Euclidean distance rings around an Initial Planning Point (IPP), it builds an anisotropic cost surface from elevation, land cover, hydrology, and OSM linear features, then traces contours of equal travel cost across real terrain, compressing against steep slopes, dense forest, and water barriers, while expanding along trails and valleys where a person can move easily. The cost surface drives both Terrain-Aware Range Rings (TARRs) at Koester find-distance percentiles and travel-time isochrones at user-specified time bands, with KML/GeoJSON exports and a write-back path to CalTopo for any SAR team's own maps.
 
@@ -51,7 +51,9 @@ Full validation details, including per-profile multiplier tables and per-profile
 
 ```
 app/
-├── server.py              Flask web server, API endpoints, PNG renderers
+├── server.py              Flask web server: validates and queues analyses, status polls, PNG renderers, CalTopo push
+├── store.py               The analysis store and the queue, shared by server.py and worker.py
+├── worker.py              Queue worker service: runs analyses two at a time as child processes
 ├── pipeline/              Analysis pipeline (modular package)
 │   ├── __init__.py        Public API re-exports
 │   ├── shared.py          Constants, utilities, bbox functions
@@ -74,6 +76,21 @@ app/
     ├── compare_sources.py    Live-vs-snapshot regression check for one IPP
     └── prune_runs.py         Analysis-store retention: rasters 180 days, manifests and contours kept
 ```
+
+## The analysis queue
+
+Pressing Run does not run the analysis in the web request. The server
+validates the request, stores it, places it in a queue and answers at
+once; a separate worker service (`wisar-worker.service`) runs the queue
+two analyses at a time. The browser polls every few seconds and shows
+the position in the queue, how many analyses are running, an estimated
+start and finish based on the median of recent run times, then the
+pipeline step actually under way, and finally the result. The link in
+the address bar works from the moment the analysis is queued, so a
+reload or another device shows the same wait and the same result. If the
+queue holds more than 40 analyses the server answers "busy" instead of
+queueing. `GET /api/health` reports whether the worker is alive and how
+deep the queue is.
 
 ## Saved analyses
 

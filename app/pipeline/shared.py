@@ -18,6 +18,21 @@ import tempfile
 # would otherwise let the next analysis overwrite the previous one's rasters.
 WORK_DIR = tempfile.mkdtemp(prefix='wisar_')
 
+# Progress hook for the queue worker (worker.py). _StepTimer.mark in
+# outputs.py calls notify_step with the name of each pipeline step as it
+# completes; the worker turns that into status.json for the browser.
+# None in one-shot scripts and under the validation harness.
+STEP_HOOK = None
+
+
+def notify_step(step):
+    if STEP_HOOK is None:
+        return
+    try:
+        STEP_HOOK(step)
+    except Exception as e:    # a status write must never fail an analysis
+        print(f"  WARNING: progress hook failed: {e}")
+
 # --- NLCD land cover impedance lookup table ---
 # Maps National Land Cover Database (NLCD) class codes to impedance values
 # on a 0-100 scale, following the IGT4SAR framework (Doherty et al. 2013,

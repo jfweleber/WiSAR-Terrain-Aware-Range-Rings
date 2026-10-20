@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Prune rasters from old WiSAR analyses; keep every manifest and contour set.
 
-Each analysis lives in its own directory under RUNS_DIR (see server.py):
+Each analysis lives in its own directory under RUNS_DIR (see store.py):
 GeoTIFFs, contours.geojson and manifest.json. After --days (default 180)
 the GeoTIFFs are deleted. manifest.json, contours.geojson and failed.json
 are never deleted: they are the record of what a planner was shown, and a
 year of them is a few tens of megabytes. Directories that never received a
-manifest or a failure record (a worker killed mid-run) are removed once
-they are a day old.
+manifest or a failure record (a job lost from the queue) are removed once
+they are a day old. The store's own `.queue/` directory is skipped.
 
     python3 prune_runs.py                 # prune
     python3 prune_runs.py --dry-run       # report only
     python3 prune_runs.py --days 365
 
-RUNS_DIR is hardcoded here as well as in server.py, like the cache
+RUNS_DIR is hardcoded here as well as in store.py, like the cache
 builders, so cron does not need the package on sys.path. Change both.
 """
 import argparse
@@ -24,7 +24,9 @@ import time
 from datetime import datetime, timezone
 
 RUNS_DIR = '/var/www/sar.weleber.net/runs'
-KEEP = {'manifest.json', 'contours.geojson', 'failed.json'}
+# job.json (the request as queued) and status.json (the worker's last
+# progress note) are a few hundred bytes and complete the record.
+KEEP = {'manifest.json', 'contours.geojson', 'failed.json', 'job.json', 'status.json'}
 
 
 def created_at(d):
@@ -68,7 +70,9 @@ def main():
     freed = 0
     for name in sorted(os.listdir(args.root)):
         d = os.path.join(args.root, name)
-        if not os.path.isdir(d):
+        # .queue/ holds the worker's markers, heartbeat and stats, and is
+        # not a run: without this it would be "abandoned" after a day.
+        if not os.path.isdir(d) or name.startswith('.'):
             continue
         scanned += 1
         ts, has_record = created_at(d)

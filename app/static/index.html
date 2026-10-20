@@ -16,7 +16,7 @@
      
      Author:  Jamie F. Weleber
      Created: March 2026
-     Version: 1.18
+     Version: 1.19
      ============================================================ -->
 <html lang="en">
 <!-- ============================================================
@@ -460,6 +460,14 @@
         <div class="modal" style="max-width:650px;max-height:90vh;overflow-y:auto;text-align:left;padding:32px;">
             <h2 style="text-align:center;font-size:22px;color:#ffca00;margin-bottom:4px;">Changelog</h2>
             <p style="text-align:center;font-size:14px;color:var(--text-muted);margin-bottom:24px;">WiSAR Decision Support Tool / SAR TARR Tool</p>
+            <div style="margin-bottom:24px;">
+    			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.19 &#8212; October 19, 2026</h3>
+    			<div style="font-size:14px;color:var(--text-secondary);line-height:1.7;">
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Analyses run from a queue:</span> Pressing Run now places the analysis in a server-side queue and shows its position, how many analyses are running, and an estimated start and finish time based on recent run times. The server runs two analyses at a time; before this, each analysis occupied one of five server processes for its whole duration, and when all five were busy any further request, a page load included, waited with no feedback and failed after ten minutes with an unreadable error. Many people can now press Run at once and each sees where they stand.</p>
+        			<p style="margin-bottom:6px;"><span style="color:var(--text-primary);font-weight:600;">Real progress:</span> While an analysis runs, the status line names the pipeline step actually under way (elevation, land cover, trails and roads, hydrography, friction surface, cost-distance, attractors, probability, contours) and the elapsed time. The earlier messages were a timer, not progress.</p>
+        			<p style="margin-bottom:0;"><span style="color:var(--text-primary);font-weight:600;">Links work before the analysis finishes:</span> The analysis link appears in the address bar as soon as the run is queued. Reloading the page, or opening the link on another device, shows the queue position and then the result when it is ready. Closing the tab no longer loses the run. Saved analyses, downloads and the CalTopo push are unchanged.</p>
+    			</div>
+    		</div>
             <div style="margin-bottom:24px;">
     			<h3 style="font-size:15px;color:#ffca00;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;">v1.18 &#8212; October 1, 2026</h3>
     			<div style="font-size:14px;color:var(--text-secondary);line-height:1.7;">

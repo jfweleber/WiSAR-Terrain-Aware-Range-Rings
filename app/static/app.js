@@ -216,6 +216,7 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
            happen when wiping the current analysis goes here.
            ---------------------------------------------------------- */
         function clearAnalysisState(){
+            activePoll=null;
             clearMeasure();
             if(measureMode){measureMode=false;document.getElementById('measureBtn').classList.remove('active');}
             if(window.costOverlay)map.removeLayer(window.costOverlay);
@@ -290,16 +291,85 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
         function showCoordEntry(){document.getElementById('coordEntryDiv').classList.remove('hidden');document.getElementById('dropPinDiv').classList.add('hidden');document.getElementById('ippCoordBtn').style.borderColor='var(--accent)';document.getElementById('ippCoordBtn').style.background='var(--accent-glow)';document.getElementById('ippDropBtn').style.borderColor='var(--border)';document.getElementById('ippDropBtn').style.background='var(--bg-field)';ippPlaceMode=false;document.getElementById('map').style.cursor='';}
         function activateDropPin(){document.getElementById('dropPinDiv').classList.remove('hidden');document.getElementById('coordEntryDiv').classList.add('hidden');document.getElementById('ippDropBtn').style.borderColor='var(--accent)';document.getElementById('ippDropBtn').style.background='var(--accent-glow)';document.getElementById('ippCoordBtn').style.borderColor='var(--border)';document.getElementById('ippCoordBtn').style.background='var(--bg-field)';ippPlaceMode=true;document.getElementById('map').style.cursor='crosshair';setIppStatus('info','Click on the map to place the IPP.');}
         var ippPlaceMode=false;map.on('click',function(e){if(measureMode){addMeasurePoint(e.latlng);return;}if(!currentMode||!ippPlaceMode)return;placeIPP(e.latlng.lat,e.latlng.lng,'Map click');setIppStatus('success','IPP placed at '+e.latlng.lat.toFixed(4)+', '+e.latlng.lng.toFixed(4));ippPlaceMode=false;document.getElementById('map').style.cursor='';document.getElementById('dropPinHint').textContent='IPP placed. Click the map again to move it, or proceed below.';document.getElementById('ippDropBtn').style.borderColor='var(--success)';document.getElementById('ippDropBtn').style.background='rgba(34,197,94,0.1)';});
-        function runAnalysis(){var p25=parseFloat(document.getElementById('pct25').value)||0,p50=parseFloat(document.getElementById('pct50').value)||0,p75=parseFloat(document.getElementById('pct75').value)||0;if(p25<=0||p50<=0||p75<=0||p25>=p50||p50>=p75){setAnalysisStatus('error','Select a subject profile to set percentiles.');return;}var profileName=document.getElementById('lpbCategory').value||'';var cal=profileName?(CALIBRATION_MULTIPLIERS[profileName]||CALIBRATION_DEFAULT):CALIBRATION_DEFAULT;var cal_p25=p25*cal.m25;var cal_p50=p50*cal.m50;var cal_p75=p75*cal.m75;var ipp=ippMarker.getLatLng();var params={ipp:{lat:ipp.lat,lng:ipp.lng}};if(profileName){params.profile=profileName;}params.percentiles={p25:cal_p25,p50:cal_p50,p75:cal_p75};params.raw_percentiles={p25:p25,p50:p50,p75:p75};params.calibration={m25:cal.m25,m50:cal.m50,m75:cal.m75};params.eco=lpbSelectedEco;params.terrain=lpbSelectedTerrain;params.label=getIncidentLabel();document.getElementById('runBtn').disabled=true;
+        /* ---- The analysis queue (v1.19, October 2026) ----
+           POST /api/analyze and /api/analyze-isochrone answer 202 at once
+           with an analysis_id; the server runs analyses two at a time from
+           a queue (server.py, worker.py). submitAnalysis posts, then
+           pollAnalysis asks /api/analyses/<id>/status every few seconds
+           and shows the queue position and the estimate, then the pipeline
+           step under way, and renders the result when it is done. The id
+           goes into the URL as soon as it is queued, so a refresh or a
+           shared link reopens the wait (openAnalysis handles the 202). */
+        var POLL_MS=2500;
+        var activePoll=null;   /* the analysis_id being polled; Reset or a new run cancels it */
+        function fmtDur(s){s=Math.max(0,Math.round(+s||0));if(s<45)return 'under a minute';var m=Math.max(1,Math.round(s/60));return 'about '+m+(m===1?' minute':' minutes');}
+        function setModeStatus(mode,type,msg){if(mode==='isochrone')setIsoStatus(type,msg);else setAnalysisStatus(type,msg);}
+        function setRunDisabled(mode,dis){var b=document.getElementById(mode==='isochrone'?'isoRunBtn':'runBtn');if(b)b.disabled=dis;}
+        function pendingMessage(st){
+            if(st.worker_alive===false)return ['warning','The analysis worker is not responding. Your request is saved (position '+(st.position||'?')+' in the queue) and will run when it is back.'];
+            if(st.state==='running'){
+                var n=(st.stage_index&&st.stage_count)?' (step '+st.stage_index+' of '+st.stage_count+')':'';
+                return ['info','Running'+n+': '+(st.stage_message||'...')+' Elapsed '+Math.round(st.elapsed_s||0)+' s.'];
+            }
+            var pos=st.position||1,running=st.running||0,slots=st.slots||2;
+            /* A free slot is taken within a second of queueing; no estimate needed. */
+            if(pos<=slots-running)return ['info','Starting...'];
+            var others=running===1?'1 analysis is running now.':running+' analyses are running now.';
+            var start=fmtDur(st.eta_start_s),done=fmtDur(st.eta_done_s);
+            /* Both round to the same figure when runs are short; say it once. */
+            var eta=(start===done)?'Estimated wait '+done+'.':'Estimated start '+start+', results '+done+'.';
+            return ['info','In queue: position '+pos+' of '+(st.queued||pos)+'. '+others+' '+eta];
+        }
+        function submitAnalysis(url,params,mode){
+            activePoll=null;
+            setRunDisabled(mode,true);
             if(window.onAnalysisStart)window.onAnalysisStart();
-            var msgs=['Calculating bounding box...','Downloading elevation data (USGS 3DEP)...','Loading land cover (NLCD snapshot)...','Loading trails, roads, power lines, and waterways from the weekly OSM snapshot...','Building friction surface from land cover...','Burning in trails, roads, and power line corridors...','Running anisotropic cost-distance from IPP (this is the slow step)...','Generating probability surface...'];
-            var msgIdx=0;
-            setAnalysisStatus('info',msgs[0]);
-            var progressTimer=setInterval(function(){msgIdx++;if(msgIdx<msgs.length){setAnalysisStatus('info',msgs[msgIdx]);}else{setAnalysisStatus('info','Still processing... almost there.');}},8000);fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)}).then(function(r){return r.json();}).then(function(data){clearInterval(progressTimer);if(data.status!=='ok')throw new Error(data.message);renderTarrResult(data);afterAnalysisLoaded(data);document.getElementById('runBtn').disabled=false;}).catch(function(err){
-                setAnalysisStatus('error','Failed: '+err.message);
-                clearInterval(progressTimer);
-                document.getElementById('runBtn').disabled=false;
+            setModeStatus(mode,'info','Submitting...');
+            fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)})
+            .then(function(r){return r.json().then(function(j){return {status:r.status,body:j};},function(){return {status:r.status,body:{message:'Server answered '+r.status+' '+r.statusText}};});})
+            .then(function(res){
+                var d=res.body||{};
+                if(res.status===202&&d.analysis_id){
+                    try{history.replaceState(null,'',analysisUrl(d.analysis_id));}catch(e){}
+                    var pm=pendingMessage(d);setModeStatus(mode,pm[0],pm[1]);
+                    pollAnalysis(d.analysis_id,mode);
+                    return;
+                }
+                throw new Error(d.message||('Server answered '+res.status));
+            }).catch(function(err){
+                setModeStatus(mode,'error','Failed: '+err.message);
+                setRunDisabled(mode,false);
             });
+        }
+        function pollAnalysis(id,mode){
+            activePoll=id;var misses=0;
+            function tick(){
+                if(activePoll!==id)return;
+                fetch('/api/analyses/'+encodeURIComponent(id)+'/status',{cache:'no-store'})
+                .then(function(r){return r.json().then(function(j){return {status:r.status,body:j};});})
+                .then(function(res){
+                    if(activePoll!==id)return;
+                    misses=0;var d=res.body||{};
+                    if(d.state==='done'&&d.status==='ok'){activePoll=null;finishAnalysis(mode,d);return;}
+                    if(d.state==='failed'||res.status===404){activePoll=null;setModeStatus(mode,'error','Failed: '+(d.message||'Analysis not found'));setRunDisabled(mode,false);return;}
+                    var pm=pendingMessage(d);setModeStatus(mode,pm[0],pm[1]);
+                    setTimeout(tick,POLL_MS);
+                }).catch(function(){
+                    if(activePoll!==id)return;
+                    misses++;
+                    if(misses>=12){activePoll=null;setModeStatus(mode,'error','Lost contact with the server while waiting. The analysis is still queued: reload this page to keep waiting for it.');setRunDisabled(mode,false);return;}
+                    setModeStatus(mode,'warning','Waiting for the server... retrying.');
+                    setTimeout(tick,POLL_MS*2);
+                });
+            }
+            setTimeout(tick,POLL_MS);
+        }
+        function finishAnalysis(mode,data){
+            if(mode==='isochrone')renderIsoResult(data);else renderTarrResult(data);
+            afterAnalysisLoaded(data);
+            setRunDisabled(mode,false);
+        }
+        function runAnalysis(){var p25=parseFloat(document.getElementById('pct25').value)||0,p50=parseFloat(document.getElementById('pct50').value)||0,p75=parseFloat(document.getElementById('pct75').value)||0;if(p25<=0||p50<=0||p75<=0||p25>=p50||p50>=p75){setAnalysisStatus('error','Select a subject profile to set percentiles.');return;}var profileName=document.getElementById('lpbCategory').value||'';var cal=profileName?(CALIBRATION_MULTIPLIERS[profileName]||CALIBRATION_DEFAULT):CALIBRATION_DEFAULT;var cal_p25=p25*cal.m25;var cal_p50=p50*cal.m50;var cal_p75=p75*cal.m75;var ipp=ippMarker.getLatLng();var params={ipp:{lat:ipp.lat,lng:ipp.lng}};if(profileName){params.profile=profileName;}params.percentiles={p25:cal_p25,p50:cal_p50,p75:cal_p75};params.raw_percentiles={p25:p25,p50:p50,p75:p75};params.calibration={m25:cal.m25,m50:cal.m50,m75:cal.m75};params.eco=lpbSelectedEco;params.terrain=lpbSelectedTerrain;params.label=getIncidentLabel();submitAnalysis('/api/analyze',params,'tarr');
         }
         /* renderTarrResult(data): draw a TARR result on the map and in the
            panel. `data` is the /api/analyze response, or the identical
@@ -541,45 +611,7 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
                 label:getIncidentLabel()
             };
 
-            var btn=document.getElementById('isoRunBtn');
-            btn.disabled=true;
-            if(window.onAnalysisStart)window.onAnalysisStart();
-
-            // Progress messages — same pipeline steps as TARR mode
-            var msgs=[
-                'Calculating bounding box...',
-                'Downloading elevation data (USGS 3DEP)...',
-                'Loading land cover (NLCD snapshot)...',
-                'Loading trails, roads, power lines, and waterways from the weekly OSM snapshot...',
-                'Building friction surface from land cover...',
-                'Burning in trails, roads, and power line corridors...',
-                'Running anisotropic cost-distance from IPP (this is the slow step)...',
-                'Extracting isochrone contours...'
-            ];
-            var msgIdx=0;
-            setIsoStatus('info',msgs[0]);
-            var progressTimer=setInterval(function(){
-                msgIdx++;
-                if(msgIdx<msgs.length){setIsoStatus('info',msgs[msgIdx]);}
-                else{setIsoStatus('info','Still processing... almost there.');}
-            },8000);
-
-            // POST to the isochrone endpoint
-            fetch('/api/analyze-isochrone',{
-                method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body:JSON.stringify(params)
-            }).then(function(r){return r.json();}).then(function(data){
-                clearInterval(progressTimer);
-                if(data.status!=='ok')throw new Error(data.message);
-                renderIsoResult(data);
-                afterAnalysisLoaded(data);
-                btn.disabled=false;
-            }).catch(function(err){
-                clearInterval(progressTimer);
-                setIsoStatus('error','Failed: '+err.message);
-                btn.disabled=false;
-            });
+            submitAnalysis('/api/analyze-isochrone',params,'isochrone');
         }
         /* renderIsoResult(data): draw a Travel Time result. Same contract
            as renderTarrResult: fresh response or reopened analysis. */
@@ -807,44 +839,68 @@ var LPB_DATA={"Abduction": [{"eco": null, "terrain": null, "distances": [0.32, 2
             applyAvailability(data);
             var lbl=document.getElementById('incidentLabel');if(lbl)lbl.value=data.label||'';
         }
-        /* Reopen a saved analysis by id, from the URL or from the list. */
+        /* Put a saved (or still queued) analysis's inputs back in the form.
+           `data` is a result or a pending status; both carry mode, ipp and
+           the request as posted. */
+        function restoreInputs(data,mode){
+            if(currentMode!==mode){selectMode(mode);}else{clearAnalysisState();}
+            var lat=+data.ipp.lat,lng=+data.ipp.lng;
+            placeIPP(lat,lng,'Saved analysis');
+            var req=data.request||{};
+            if(mode==='tarr'){
+                var sel=document.getElementById('lpbCategory');
+                if(sel){sel.value=req.profile||'';if(req.profile&&sel.value!==req.profile)sel.value='';}
+                var raw=req.raw_percentiles||{};
+                if(raw.p25){
+                    document.getElementById('pct25').value=raw.p25;document.getElementById('pct50').value=raw.p50;document.getElementById('pct75').value=raw.p75;
+                    document.getElementById('lpbSource').classList.remove('hidden');
+                    var cal=req.calibration||CALIBRATION_MULTIPLIERS[req.profile]||CALIBRATION_DEFAULT;
+                    var calDiv=document.getElementById('calibrationIndicator');
+                    calDiv.textContent='Coconino calibration: \u00d7'+(+cal.m25).toFixed(2)+' / \u00d7'+(+cal.m50).toFixed(2)+' / \u00d7'+(+cal.m75).toFixed(2)+' (p25/p50/p75)'+(CALIBRATION_MULTIPLIERS[req.profile]?' \u2014 profile-specific':' \u2014 global default');
+                    calDiv.classList.remove('hidden');
+                }
+                checkRunButton();
+            }else{
+                var ip=data.isochrone_params||{};
+                var mph=ip.base_speed_mph;
+                if(mph==null&&req.speed!=null){mph=req.speed_unit==='mph'?+req.speed:(+req.speed/1.609344);mph=Math.round(mph*100)/100;}
+                if(isoSpeedUnit!=='mph')setIsoUnit('mph');
+                document.getElementById('isoSpeed').value=mph||'';
+                var want=(ip.intervals||req.intervals||[]).map(function(v){return String(+v);});
+                document.querySelectorAll('.iso-interval').forEach(function(cb){cb.checked=want.indexOf(String(parseFloat(cb.value)))>=0;});
+                checkIsoRunButton();
+            }
+            return {lat:lat,lng:lng};
+        }
+        /* Reopen a saved analysis by id, from the URL or from the list.
+           A 202 means it is still queued or running: restore the inputs,
+           show where it stands and poll until it finishes. */
         function openAnalysis(id){
             setIppStatus('info','Opening saved analysis...');
-            fetch('/api/analyses/'+encodeURIComponent(id)).then(function(r){return r.json().then(function(j){return {ok:r.ok,body:j};});}).then(function(res){
+            fetch('/api/analyses/'+encodeURIComponent(id)).then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,body:j};});}).then(function(res){
                 var data=res.body;
+                if(res.status===202&&data.status==='pending'&&data.ipp){
+                    var pmode=data.mode==='isochrone'?'isochrone':'tarr';
+                    var p=restoreInputs(data,pmode);
+                    setRunDisabled(pmode,true);
+                    var pm=pendingMessage(data);setModeStatus(pmode,pm[0],pm[1]);
+                    try{history.replaceState(null,'',analysisUrl(id));}catch(e){}
+                    setIppStatus('success','IPP from the queued analysis: '+p.lat.toFixed(4)+', '+p.lng.toFixed(4));
+                    pollAnalysis(id,pmode);
+                    return;
+                }
                 if(!res.ok||data.status!=='ok')throw new Error(data.message||'Analysis not found');
                 var mode=data.mode==='isochrone'?'isochrone':'tarr';
-                if(currentMode!==mode){selectMode(mode);}else{clearAnalysisState();}
-                var lat=+data.ipp.lat,lng=+data.ipp.lng;
-                placeIPP(lat,lng,'Saved analysis');
-                var req=data.request||{};
+                var pt=restoreInputs(data,mode);
                 if(mode==='tarr'){
-                    var sel=document.getElementById('lpbCategory');
-                    if(sel){sel.value=req.profile||'';if(req.profile&&sel.value!==req.profile)sel.value='';}
-                    var raw=req.raw_percentiles||{};
-                    if(raw.p25){
-                        document.getElementById('pct25').value=raw.p25;document.getElementById('pct50').value=raw.p50;document.getElementById('pct75').value=raw.p75;
-                        document.getElementById('lpbSource').classList.remove('hidden');
-                        var cal=req.calibration||CALIBRATION_MULTIPLIERS[req.profile]||CALIBRATION_DEFAULT;
-                        var calDiv=document.getElementById('calibrationIndicator');
-                        calDiv.textContent='Coconino calibration: \u00d7'+(+cal.m25).toFixed(2)+' / \u00d7'+(+cal.m50).toFixed(2)+' / \u00d7'+(+cal.m75).toFixed(2)+' (p25/p50/p75)'+(CALIBRATION_MULTIPLIERS[req.profile]?' \u2014 profile-specific':' \u2014 global default');
-                        calDiv.classList.remove('hidden');
-                    }
-                    checkRunButton();
                     renderTarrResult(data);
                     setAnalysisStatus('success','Opened saved analysis from '+fmtWhen(data.created_utc)+'.');
                 }else{
-                    var ip=data.isochrone_params||{};
-                    if(isoSpeedUnit!=='mph')setIsoUnit('mph');
-                    document.getElementById('isoSpeed').value=ip.base_speed_mph||'';
-                    var want=(ip.intervals||[]).map(function(v){return String(+v);});
-                    document.querySelectorAll('.iso-interval').forEach(function(cb){cb.checked=want.indexOf(String(parseFloat(cb.value)))>=0;});
-                    checkIsoRunButton();
                     renderIsoResult(data);
                     setIsoStatus('success','Opened saved analysis from '+fmtWhen(data.created_utc)+'.');
                 }
                 afterAnalysisLoaded(data);
-                setIppStatus('success','IPP from saved analysis: '+lat.toFixed(4)+', '+lng.toFixed(4));
+                setIppStatus('success','IPP from saved analysis: '+pt.lat.toFixed(4)+', '+pt.lng.toFixed(4));
             }).catch(function(err){
                 setIppStatus('error','Could not open the saved analysis: '+err.message);
                 var splash=document.getElementById('splashModal');if(!currentMode&&splash)splash.classList.remove('hidden');
