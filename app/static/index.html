@@ -756,7 +756,8 @@
                     <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Distance</td><td style="padding:5px 0;">3D surface distance with cross-slope penalty</td></tr>
                     <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">POA distribution</td><td style="padding:5px 0;">Log-normal fit from user percentiles</td></tr>
                     <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Saved analyses</td><td style="padding:5px 0;">Each analysis is stored on the server under a unique id with its settings, the data-source versions it used, and its contour polygons, and reopens from the link shown in Analysis Results. Rasters are kept 180 days; contours and settings indefinitely, with a nightly off-site backup.</td></tr>
-                    <tr><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Server</td><td style="padding:5px 0;">Ubuntu 24.04, Python 3.12, Flask, Gunicorn, Nginx</td></tr>
+                    <tr style="border-bottom:1px solid var(--border);"><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Processing</td><td style="padding:5px 0;">Analyses run from a server-side queue in a separate worker service, two at a time, each in its own process. The page polls every few seconds and shows the queue position, an estimate from recent run times, then the pipeline step under way. The analysis link works from the moment the run is queued; more than 40 waiting analyses answers "busy".</td></tr>
+                    <tr><td style="padding:5px 0;font-weight:600;color:var(--text-primary);">Server</td><td style="padding:5px 0;">Ubuntu 24.04, Python 3.12, Flask, Gunicorn, Nginx; analysis queue worker under systemd</td></tr>
                 </table>
             </div>
 
@@ -792,7 +793,7 @@
                 <p style="font-size:13px;color:var(--text-secondary);">Jamie Weleber<br><a href="https://sar.weleber.net" style="color:var(--accent);">https://sar.weleber.net</a></p>
             </div>
 
-            <p style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: September 30, 2026 | Version 1.18</p>
+            <p style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:16px;">Metadata Date: October 19, 2026 | Version 1.19</p>
 
             <div style="text-align:center;">
                 <button onclick="document.getElementById('metadataModal').classList.add('hidden');" style="padding:10px 32px;background:var(--accent);color:white;border:none;border-radius:6px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;">Close</button>
